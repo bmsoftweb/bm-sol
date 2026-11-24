@@ -1340,6 +1340,8 @@ export const RESOURCES: ResourceDef[] = [
     description: 'Catálogo de produtos e serviços com preço de tabela',
     icon: 'Package',
     group: 'cadastros',
+    // bm-sol: fora do menu (o suporte só cadastra Serviços); continua para os itens da OS
+    oculto: true,
     pk: ['id'],
     autoIncrement: true,
     labelField: 'nome',
@@ -1415,6 +1417,8 @@ export const RESOURCES: ResourceDef[] = [
     description: 'Agrupam os produtos na impressão resumida da proposta e do pedido (ex.: LICENÇA BMSOFT, MENSALIDADE BMSOFT)',
     icon: 'Layers',
     group: 'cadastros',
+    // bm-sol: fora do menu (o suporte só cadastra Serviços); continua para os itens da OS
+    oculto: true,
     pk: ['id'],
     autoIncrement: true,
     labelField: 'nome',

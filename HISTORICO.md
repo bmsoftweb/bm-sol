@@ -2,6 +2,10 @@
 
 Mais recente primeiro. PATCH a cada envio ao GitHub; MAJOR/MINOR só quando pedido.
 
+## 0.0.3 — 2026-11-24
+
+- Cadastros: Produtos e Grupos de Produtos saem do menu (fica só Serviços). Os itens da OS continuam aceitando produto, e a permissão de Produtos no bm-crm é preservada ao gravar permissões aqui.
+
 ## 0.0.2 — 2026-11-24
 
 - Vercel: tirado o `memory` do `vercel.json` (ignorado no Active CPU, dava aviso no build).
