@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { SelectAuto } from './SelectAuto';
 import { Loader2, Save } from 'lucide-react';
-import { fetchConfig, fetchOptions, listRecords, salvarConfig } from '../services/api';
+import { fetchConfig, fetchOptions, salvarConfig } from '../services/api';
 import { OpcaoRef } from '../types';
 import { INPUT_CLASS, LABEL_CLASS, FIELD_CLASS, HINT_CLASS } from '../utils/formStyles';
 import { NumberField } from './NumberField';
@@ -25,14 +25,13 @@ interface Props {
 }
 
 /**
- * Configurações › Chatbot: o nome do assistente, os tempos do atendimento, o revezamento de leads, a análise das conversas e
+ * Configurações › Chatbot: o nome do assistente, os tempos do atendimento, a análise das conversas e
  * a pesquisa de satisfação. A IA (Gemini, Claude ou DeepSeek, chave e modelo) fica em Configurações › IA (ConfigIA.tsx),
  * gravada na mesma config: ao salvar, cada aba muda só o que é dela.
  * O atendimento em si (ligar, texto-base, menus) fica em Configurações › Automação.
  */
 export const ConfigChatbot: React.FC<Props> = ({ somenteLeitura, onToast }) => {
   const [v, setV] = useState<Chatbot | null>(null);
-  const [usuarios, setUsuarios] = useState<OpcaoRef[]>([]);
   /** Todos os usuários ativos: combo do responsável pelas pendências sem dono */
   const [todos, setTodos] = useState<OpcaoRef[]>([]);
   const [ocupado, setOcupado] = useState<'salvar' | null>(null);
@@ -44,10 +43,6 @@ export const ConfigChatbot: React.FC<Props> = ({ somenteLeitura, onToast }) => {
         setV(valor);
       })
       .catch((e) => setErro(e.message));
-    // Quem está no revezamento (ligado no cadastro de Usuários), só para mostrar
-    listRecords('usuarios', { limit: 200, filters: [{ field: 'revezamento', op: 'eq', value: '1' }, { field: 'ativo', op: 'eq', value: '1' }] })
-      .then((r) => setUsuarios(r.data.map((u) => ({ value: String(u.id), label: String(u.nome) }))))
-      .catch(() => {});
     fetchOptions('usuarios', 'nome')
       .then((l) => setTodos(l.filter((o) => !o.label.endsWith('(inativo)'))))
       .catch(() => {});
@@ -107,24 +102,6 @@ export const ConfigChatbot: React.FC<Props> = ({ somenteLeitura, onToast }) => {
             <NumberField id="bot-inatividade" value={String(v.minutos_inatividade)} onChange={(t) => alterar({ minutos_inatividade: Number(t) || 0 })} scale={0} className={campo} />
             <span className={HINT_CLASS}>Cliente sem responder ao bot: a conversa vai para aguardando, sem mensagem ao cliente. Conversa com técnico (assumida ou transferida) fica com ele até encerrar, pausar ou transferir; o tempo não a tira dele. 0 = desligado</span>
           </div>
-        </div>
-
-        <div className={FIELD_CLASS}>
-          <span className={LABEL_CLASS}>Revezamento de leads</span>
-          {usuarios.length ? (
-            <div className="flex flex-wrap gap-1.5 pt-1">
-              {usuarios.map((u) => (
-                <span key={u.value} className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
-                  {u.label}
-                </span>
-              ))}
-            </div>
-          ) : (
-            <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-xs text-amber-800 dark:text-amber-300">
-              Ninguém no revezamento: os leads novos ficam sem responsável até alguém assumir.
-            </div>
-          )}
-          <span className={HINT_CLASS}>Cada lead novo vai para o próximo da lista. Para incluir ou tirar alguém: Usuários › "Entra no revezamento de leads".</span>
         </div>
 
         <div className="flex flex-col gap-3 pt-3 border-t border-stone-200 dark:border-stone-800">

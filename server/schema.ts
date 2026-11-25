@@ -11,7 +11,6 @@
  * Todo recurso declara scopeSql, aplicado em TODA consulta (alias "t", um "?" = empresa).
  */
 
-import { FORMAS_PAGAMENTO } from '../src/utils/parcelas.js';
 
 export type FieldType =
   | 'text'
@@ -29,8 +28,6 @@ export type FieldType =
   | 'imagem'
   /** Conjunto de campos definidos em Configurações, gravado como JSON */
   | 'personalizados'
-  /** Regras de segmentação de campanha, gravadas como JSON (server/campanhas.ts) */
-  | 'criterios'
   /** Até 4 fotos no Vercel Blob; a coluna guarda os endereços em JSON (server/fotos.ts) */
   | 'fotos'
   /** Cor #RRGGBB escolhida numa tabela de cores (src/components/CorField.tsx) */
@@ -124,7 +121,7 @@ export interface ResourceDef {
   labelField: string;
   /**
    * SELECT próprio para os combos (colunas value e label), quando o rótulo depende de
-   * outra tabela. Ex.: etapa exibida como "Funil › Etapa". Um "?" = empresa logada.
+   * outra tabela. Ex.: pessoa com "(inativo)". Um "?" = empresa logada.
    */
   optionsSql?: string;
   /** Coluna da empresa (tenant), preenchida pelo servidor na inclusão e nunca editável */
@@ -164,13 +161,6 @@ export interface ResourceDef {
   semDadosDoBanco?: boolean;
   fields: FieldDef[];
 }
-
-const STATUS_NEGOCIO = [
-  { value: 'aberto', label: 'Aberto' },
-  { value: 'ganho', label: 'Ganho' },
-  { value: 'perdido', label: 'Perdido' },
-  { value: 'excluido', label: 'Excluído' },
-];
 
 export const TIPOS_ATIVIDADE = [
   { value: 'ligacao', label: 'Ligação' },
@@ -218,8 +208,8 @@ export const PAPEIS_CONTATO = [
 /** Para quem vai o lembrete automático da atividade (Configurações › Mensagens automáticas) */
 export const LEMBRETE_PARA = [
   { value: 'cliente', label: 'Cliente' },
-  { value: 'vendedor', label: 'Vendedor' },
-  { value: 'ambos', label: 'Cliente e vendedor' },
+  { value: 'vendedor', label: 'Responsável' },
+  { value: 'ambos', label: 'Cliente e responsável' },
   { value: 'todos', label: 'Todos os envolvidos' },
   { value: 'nenhum', label: 'Ninguém' },
 ];
@@ -231,119 +221,12 @@ export const CANAIS_TEMPLATE = [
   { value: 'suporte', label: 'Suporte' },
 ];
 
-export const TIPOS_PESSOA = [
-  { value: 'lead', label: 'Lead' },
-  { value: 'cliente', label: 'Cliente' },
-];
-
 export const TIPOS_ENDERECO = [
   { value: 'comercial', label: 'Comercial' },
   { value: 'residencial', label: 'Residencial' },
   { value: 'entrega', label: 'Entrega' },
   { value: 'cobranca', label: 'Cobrança' },
   { value: 'outro', label: 'Outro' },
-];
-
-export const TIPOS_INTERACAO = [
-  { value: 'nota', label: 'Nota' },
-  { value: 'ligacao', label: 'Ligação' },
-  { value: 'email', label: 'E-mail' },
-  { value: 'whatsapp', label: 'WhatsApp' },
-  { value: 'reuniao', label: 'Reunião' },
-];
-
-export const STATUS_PROPOSTA = [
-  { value: 'rascunho', label: 'Rascunho' },
-  { value: 'enviada', label: 'Enviada' },
-  { value: 'aceita', label: 'Aceita' },
-  { value: 'recusada', label: 'Recusada' },
-  { value: 'expirada', label: 'Expirada' },
-  // Outra versão da mesma proposta foi aceita (definido pela aprovação, não à mão)
-  { value: 'fechada', label: 'Fechada' },
-];
-
-export const STATUS_PEDIDO = [
-  { value: 'rascunho', label: 'Rascunho' },
-  { value: 'aguardando_aprovacao', label: 'Aguardando Aprovação' },
-  { value: 'aprovado', label: 'Aprovado' },
-  { value: 'faturado', label: 'Faturado' },
-  { value: 'cancelado', label: 'Cancelado' },
-];
-
-const OBJETIVOS_CAMPANHA = [
-  { value: 'reativacao', label: 'Reativação' },
-  { value: 'nutricao', label: 'Nutrição' },
-  { value: 'conversao', label: 'Conversão' },
-  { value: 'onboarding', label: 'Onboarding' },
-  { value: 'retencao', label: 'Retenção' },
-  { value: 'upsell', label: 'Upsell' },
-];
-
-/** Canais com envio automático (o banco ainda aceita sms e push, sem envio) */
-const CANAIS_CAMPANHA = [
-  { value: 'whatsapp', label: 'WhatsApp' },
-  { value: 'email', label: 'E-mail' },
-  { value: 'multicanal', label: 'WhatsApp ou e-mail' },
-];
-
-/** Canal de cada disparo (o multicanal da campanha vira um destes) */
-const CANAIS_DISPARO = [
-  { value: 'whatsapp', label: 'WhatsApp' },
-  { value: 'email', label: 'E-mail' },
-];
-
-const SITUACOES_CAMPANHA = [
-  { value: 'rascunho', label: 'Rascunho' },
-  { value: 'agendada', label: 'Agendada' },
-  { value: 'em_execucao', label: 'Em execução' },
-  { value: 'pausada', label: 'Pausada' },
-  { value: 'concluida', label: 'Concluída' },
-  { value: 'cancelada', label: 'Cancelada' },
-];
-
-/**
- * Disparo (alias a) que a pessoa respondeu e alguém da equipe escreveu depois: mensagem com usuário (IA, bot e avisos
- * de atendimento não contam). O número da conversa pode estar com ou sem o 9
- */
-const equipeRespondeu = (a: string) => `EXISTS (SELECT 1 FROM whatsapp_mensagens w
-    WHERE w.empresa_id = (SELECT c.empresa_id FROM campanhas c WHERE c.id = ${a}.campanha_id)
-      AND w.telefone IN (${a}.destino, CONCAT(LEFT(${a}.destino, 4), RIGHT(${a}.destino, 8)), CONCAT(LEFT(${a}.destino, 4), '9', RIGHT(${a}.destino, 8)))
-      AND w.direcao = 'enviada' AND w.usuario_id IS NOT NULL AND w.tipo NOT IN ('evento', 'encerramento', 'apagada')
-      AND w.data_hora >= ${a}.respondido_em)`;
-
-const SITUACOES_DISPARO = [
-  { value: 'pendente', label: 'Pendente' },
-  { value: 'enviado', label: 'Enviado' },
-  { value: 'entregue', label: 'Entregue' },
-  { value: 'lido', label: 'Lido' },
-  { value: 'falhou', label: 'Falhou' },
-  { value: 'cancelado', label: 'Cancelado' },
-  // Calculadas (não gravadas): a pessoa respondeu e alguém da equipe respondeu depois, ou ainda não
-  { value: 'respondido', label: 'Respondido' },
-  { value: 'nao_respondido', label: 'Não respondido' },
-];
-
-const TIPOS_CONTRATO = [
-  { value: 'recorrente', label: 'Recorrente' },
-  { value: 'prazo_fechado', label: 'Prazo fechado' },
-];
-
-const SITUACOES_CONTRATO = [
-  { value: 'rascunho', label: 'Rascunho' },
-  { value: 'aguardando_assinatura', label: 'Aguardando assinatura' },
-  { value: 'ativo', label: 'Ativo' },
-  { value: 'suspenso', label: 'Suspenso' },
-  { value: 'encerrado', label: 'Encerrado' },
-  { value: 'cancelado', label: 'Cancelado' },
-];
-
-const PERIODICIDADES = [
-  { value: 'mensal', label: 'Mensal' },
-  { value: 'bimestral', label: 'Bimestral' },
-  { value: 'trimestral', label: 'Trimestral' },
-  { value: 'semestral', label: 'Semestral' },
-  { value: 'anual', label: 'Anual' },
-  { value: 'unica', label: 'Única' },
 ];
 
 /**
@@ -363,12 +246,6 @@ const CRIADO_ATUALIZADO = [
   { name: 'atualizado_em', label: 'Atualizado em', type: 'datetime', readOnly: true } as FieldDef,
 ];
 
-const ORIGENS_LEAD = [
-  { value: 'prospeccao', label: 'Prospecção' },
-  { value: 'whatsapp', label: 'WhatsApp' },
-  { value: 'manual', label: 'Manual' },
-  { value: 'importacao', label: 'Importação' },
-];
 const CANAIS_PESQUISA = [
   { value: 'whatsapp', label: 'WhatsApp' },
   { value: 'email', label: 'E-mail' },
@@ -391,57 +268,7 @@ const SITUACOES_ITEM_PESQUISA = [
 
 const ID: FieldDef = { name: 'id', label: 'ID', type: 'number', readOnly: true, width: 'xs' };
 
-const itensFields = (fk: string, label: string, ref: string): FieldDef[] => [
-  ID,
-  { name: fk, label, type: 'text', required: true, ref: { resource: ref, labelField: 'titulo' } },
-  { name: 'produto_id', label: 'Produto', type: 'text', required: true, listed: true, ref: { resource: 'produtos', labelField: 'nome' } },
-  { name: 'quantidade', label: 'Quantidade', type: 'decimal', scale: 3, listed: true },
-  { name: 'preco_unitario', label: 'Preço Unitário', type: 'decimal', scale: 2, listed: true },
-  { name: 'desconto', label: 'Desconto (R$)', type: 'decimal', scale: 2, listed: true },
-  { name: 'subtotal', label: 'Subtotal', type: 'decimal', scale: 2, listed: true },
-];
-
-/**
- * Itens do documento agrupados como na impressão resumida (agruparItens): uma linha por grupo de produtos, os grupos
- * primeiro (na ordem do 1º item), depois os produtos sem grupo. Valor bruto (qtd × preço). Só leitura.
- */
-const resumoPorGrupo = (itens: string, fk: string, doc: string, nomeDoc: string): ResourceDef => ({
-  name: `${itens}_grupos`,
-  table: `(SELECT MIN(i.id) AS id, i.${fk}, MAX(COALESCE(g.nome, pr.nome)) AS grupo, COUNT(*) AS itens,
-                  ROUND(SUM(i.quantidade * i.preco_unitario), 2) AS valor,
-                  MAX(pr.grupo_id IS NULL) * 1000000000 + MIN(i.id) AS posicao
-             FROM ${itens} i JOIN produtos pr ON pr.id = i.produto_id
-             LEFT JOIN produtos_grupos g ON g.id = pr.grupo_id
-            GROUP BY i.${fk}, IF(pr.grupo_id IS NULL, CONCAT('i', i.id), CONCAT('g', pr.grupo_id)))`,
-  scopeSql: `t.${fk} IN (SELECT id FROM ${doc} WHERE empresa_id = ?)`,
-  label: 'Resumo por Grupo',
-  labelSingular: 'Grupo',
-  description: `Itens do documento (${nomeDoc}) agrupados pelo grupo do produto`,
-  icon: 'Layers',
-  group: 'vendas',
-  oculto: true,
-  // A grade de detalhe ordena pela chave: a posição (única) já põe os grupos primeiro
-  pk: ['posicao'],
-  autoIncrement: true,
-  labelField: 'grupo',
-  defaultSort: { field: 'posicao', dir: 'asc' },
-  canCreate: false,
-  canUpdate: false,
-  canDelete: false,
-  fields: [
-    ID,
-    { name: fk, label: nomeDoc, type: 'text', ref: { resource: doc, labelField: doc === 'propostas' ? 'titulo' : 'numero_pedido' } },
-    { name: 'grupo', label: 'Grupo / Produto', type: 'text', listed: true },
-    { name: 'itens', label: 'Itens', type: 'number', listed: true, width: 'xs' },
-    { name: 'valor', label: 'Valor', type: 'decimal', scale: 2, listed: true },
-    { name: 'posicao', label: 'Posição', type: 'number', readOnly: true },
-  ],
-});
-
 export const RESOURCES: ResourceDef[] = [
-  // ============================================================
-  // VENDAS
-  // ============================================================
   {
     name: 'atividades',
     table: 'atividades',
@@ -461,8 +288,6 @@ export const RESOURCES: ResourceDef[] = [
     filtroRapidoPadrao: '0',
     ficha: true,
     calendario: true,
-    // As vindas do Google Agenda aparecem só no calendário
-    filtroLista: { field: 'origem', op: 'ne', value: 'google', aviso: 'sem as vindas do Google Agenda (veja em Semana ou Mês)' },
     // Sim/Não "Do bot": desligado esconde as que o Bot executa e as que o chatbot/automação cria sozinho
     toggleMostrar: {
       label: 'Do bot',
@@ -504,7 +329,7 @@ export const RESOURCES: ResourceDef[] = [
         required: true,
         options: LEMBRETE_PARA,
         default: 'cliente',
-        hint: 'WhatsApp automático antes da atividade, se ligado em Configurações › Mensagens automáticas. Vendedor = o usuário que executa ou, sem ele, o responsável do negócio. Todos = cliente, vendedor e envolvidos. Com o Bot executando: com quem ele conversa.',
+        hint: 'WhatsApp automático antes da atividade, se ligado em Configurações › Mensagens automáticas. Responsável = o usuário que executa ou, sem ele, o atendente do chamado. Todos = cliente, responsável e envolvidos. Com o Bot executando: com quem ele conversa.',
       },
       {
         name: 'quem_executa',
@@ -537,7 +362,6 @@ export const RESOURCES: ResourceDef[] = [
                 JOIN usuarios u ON u.id = e.usuario_id WHERE e.atividade_id = t.id)`,
       },
       { name: 'pessoa_id', label: 'Contato', type: 'text', listed: true, ref: { resource: 'pessoas', labelField: 'nome' } },
-      // Atividade de um lead (Marketing › Leads); na conversão passa para a pessoa
       {
         // De onde veio: Bot executando, criada pelo chatbot/automação (atividades.criada_por_bot), pendência achada na análise de uma conversa (server/pendencias.ts, pela
         // observação), tarefa de chamado, ou lançada à mão. Calculada: não há coluna no banco
@@ -548,7 +372,6 @@ export const RESOURCES: ResourceDef[] = [
         listed: true,
         filterable: true,
         options: [
-          { value: 'google', label: 'Google Agenda' },
           { value: 'pesquisa', label: 'Pesquisa de satisfação' },
           { value: 'bot', label: 'Bot' },
           { value: 'chatbot', label: 'Chatbot do WhatsApp' },
@@ -556,9 +379,7 @@ export const RESOURCES: ResourceDef[] = [
           { value: 'chamado', label: 'Chamado' },
           { value: 'manual', label: 'Manual' },
         ],
-        // Google Agenda: atividade criada a partir de um evento do Google (server/agendaGoogle.ts)
-        sql: `(CASE WHEN t.google_importada = 1 THEN 'google'
-                    WHEN EXISTS (SELECT 1 FROM pesquisas_satisfacao_itens i WHERE i.atividade_id = t.id) OR t.observacao LIKE 'Retorno da pesquisa de satisfação%' THEN 'pesquisa'
+        sql: `(CASE WHEN EXISTS (SELECT 1 FROM pesquisas_satisfacao_itens i WHERE i.atividade_id = t.id) OR t.observacao LIKE 'Retorno da pesquisa de satisfação%' THEN 'pesquisa'
                     WHEN t.executor_bot = 1 THEN 'bot'
                     WHEN t.criada_por_bot = 1 THEN 'chatbot'
                     WHEN t.observacao LIKE 'Identificada pela análise automática%' THEN 'pendencia'
@@ -663,7 +484,7 @@ export const RESOURCES: ResourceDef[] = [
     scopeSql: 't.id = ?',
     label: 'Minha Empresa',
     labelSingular: 'Empresa',
-    description: 'Dados da empresa logada (impressos nas propostas e pedidos)',
+    description: 'Dados da empresa logada',
     icon: 'Building2',
     group: 'cadastros',
     pk: ['id'],
@@ -678,7 +499,7 @@ export const RESOURCES: ResourceDef[] = [
       { name: 'nome', label: 'Nome', type: 'text', required: true, listed: true, searchable: true, maxLength: 255 },
       { name: 'cnpj', label: 'CNPJ', type: 'cnpj', listed: true, searchable: true },
       { name: 'endereco', label: 'Endereço', type: 'textarea', listed: true, searchable: true },
-      { name: 'logo', label: 'Logo', type: 'imagem', hint: 'Aparece no cabeçalho da impressão de propostas e pedidos' },
+      { name: 'logo', label: 'Logo', type: 'imagem', hint: 'Aparece no cabeçalho das impressões' },
       ...CRIADO_ATUALIZADO,
     ],
   },
@@ -689,13 +510,13 @@ export const RESOURCES: ResourceDef[] = [
     scopeSql: 't.empresa_id = ?',
     label: 'Pessoas',
     labelSingular: 'Pessoa',
-    description: 'Contatos dos leads e clientes',
+    description: 'Clientes',
     icon: 'Users',
     group: 'cadastros',
     pk: ['id'],
     autoIncrement: true,
     labelField: 'nome',
-    // Inativos continuam nos combos (proposta para reativar o sistema), marcados
+    // Inativos continuam nos combos, marcados
     optionsSql: `SELECT id AS value, CONCAT(nome, IF(ativo = 1, '', ' (inativo)')) AS label
                    FROM pessoas WHERE empresa_id = ? ORDER BY nome LIMIT 5000`,
     defaultSort: { field: 'nome', dir: 'asc' },
@@ -709,9 +530,7 @@ export const RESOURCES: ResourceDef[] = [
     ],
     fields: [
       ID,
-      { name: 'tipo', label: 'Tipo', type: 'enum', required: true, listed: true, filterable: true, options: TIPOS_PESSOA, default: 'cliente', width: 'xs', span: 1 },
-      // Tipo + Nome dividem a primeira linha do formulário (grade de 4 colunas)
-      { name: 'nome', label: 'Nome', type: 'text', required: true, listed: true, searchable: true, maxLength: 255, span: 3 },
+      { name: 'nome', label: 'Nome', type: 'text', required: true, listed: true, searchable: true, maxLength: 255 },
       {
         name: 'ativo',
         label: 'Ativo',
@@ -720,20 +539,12 @@ export const RESOURCES: ResourceDef[] = [
         filterable: true,
         default: true,
         width: 'xs',
-        hint: 'Inativo continua nas listas (propostas, negócios) para quando o cliente quiser reativar. Vem do bmsoft na importação',
-      },
-      {
-        name: 'nao_receber_campanhas',
-        label: 'Não receber campanhas',
-        type: 'boolean',
-        filterable: true,
-        default: false,
-        hint: 'Fica fora de todas as campanhas. Marcado sozinho quando a pessoa responde "SAIR" a uma campanha no WhatsApp',
+        hint: 'Inativo continua nas listas, marcado. Vem do bmsoft na importação',
       },
       { name: 'tecnico_padrao_id', label: 'Técnico Padrão', type: 'text', listed: true, filterable: true, ref: { resource: 'usuarios', labelField: 'nome' }, hint: 'Quem atende os chamados e o WhatsApp deste cliente (outro técnico ainda pode assumir)' },
       { name: 'email', label: 'E-mail', type: 'text', listed: true, searchable: true, maxLength: 255 },
       { name: 'telefone', label: 'Telefone', type: 'text', listed: true, searchable: true, maxLength: 50 },
-      { name: 'whatsapp', label: 'WhatsApp', type: 'text', listed: true, searchable: true, maxLength: 20, hint: 'Com DDD. Usado nas campanhas e mensagens automáticas (sem ele, vale o telefone)' },
+      { name: 'whatsapp', label: 'WhatsApp', type: 'text', listed: true, searchable: true, maxLength: 20, hint: 'Com DDD. Usado nas mensagens automáticas (sem ele, vale o telefone)' },
       { name: 'cpf', label: 'CPF', type: 'text', searchable: true, maxLength: 14, placeholder: '000.000.000-00' },
       { name: 'anydesk_id', label: 'ID AnyDesk', type: 'text', maxLength: 20, hint: 'Número do AnyDesk do cliente: o técnico conecta direto pelo chamado (o cliente também envia pelo chat do site)' },
       { name: 'obs', label: 'Observação', type: 'textarea' },
@@ -1397,20 +1208,11 @@ export const RESOURCES: ResourceDef[] = [
       { name: 'id', label: 'ID', type: 'number', readOnly: true, listed: true, width: 'xs' },
       { name: 'nome', label: 'Nome', type: 'text', required: true, listed: true, searchable: true, maxLength: 150 },
       { name: 'email', label: 'E-mail', type: 'text', required: true, listed: true, searchable: true, maxLength: 150 },
-      { name: 'telefone', label: 'WhatsApp', type: 'text', listed: true, maxLength: 20, hint: 'Com DDD: recebe os lembretes das atividades dos negócios dele' },
+      { name: 'telefone', label: 'WhatsApp', type: 'text', listed: true, maxLength: 20, hint: 'Com DDD: recebe os lembretes das atividades dele' },
       { name: 'senha_hash', label: 'Senha', type: 'password', hint: 'Em branco na inclusão: a senha é definida no primeiro acesso' },
       { name: 'cargo', label: 'Cargo', type: 'text', listed: true, maxLength: 80 },
       { name: 'departamento_id', label: 'Departamento', type: 'text', listed: true, filterable: true, ref: { resource: 'departamentos', labelField: 'nome' } },
       { name: 'tipo', label: 'Perfil', type: 'enum', required: true, listed: true, filterable: true, options: PERFIS, default: 'client', hint: 'Administrador acessa tudo; os demais, o que estiver liberado em Permissões' },
-      {
-        name: 'revezamento',
-        label: 'Entra no revezamento de leads',
-        type: 'boolean',
-        listed: true,
-        filterable: true,
-        default: false,
-        hint: 'Leads novos da automação vão, um de cada vez, para quem tem isto ligado',
-      },
       { name: 'ativo', label: 'Ativo', type: 'boolean', listed: true, filterable: true },
       { name: 'created_at', label: 'Criado em', type: 'datetime', readOnly: true },
     ],

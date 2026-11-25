@@ -1,7 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { pool } from './db.js';
-import { apagarParaTodos, ArquivoEnvio, chaveTelefone, citacaoDa, contaWhats, CONTATO_RECENTE, donoDoTelefone, LEAD_RECENTE, PESSOA_RECENTE, enviarMidiaWhatsApp, enviarWhatsApp, midiaDaMensagem, telefoneWhatsApp, contaDaConversa } from './whatsapp.js';
-import { sincronizarNegocio } from './regras.js';
+import { apagarParaTodos, ArquivoEnvio, chaveTelefone, citacaoDa, CONTATO_RECENTE, donoDoTelefone, PESSOA_RECENTE, enviarMidiaWhatsApp, enviarWhatsApp, midiaDaMensagem, telefoneWhatsApp } from './whatsapp.js';
 import { lerConfig } from './config.js';
 import { atendimentoAtual, encerrarAtendimento, marcarEncerramento, marcarEvento, minutosDevolver, minutosInatividade, mudarAtendimento } from './chatbot.js';
 import { jornadaAtende, lerJornadaConfig } from './jornada.js';
@@ -107,20 +106,17 @@ export function createConversasRouter(): Router {
 
   /**
    * Conversa de uma atividade (clique na ficha do negócio, duplo clique na lista): o número em que a pessoa
-   * da atividade (ou a do negócio) conversou no WhatsApp, de preferência a conversa de antes da atividade
+   * da atividade conversou no WhatsApp, de preferência a conversa de antes da atividade
    * ter sido criada (a que gerou a pendência); sem conversa, o telefone do cadastro
    */
   router.get('/whatsapp/atividades/:id/conversa', async (req: Request, res: Response) => {
     try {
       const emp = res.locals.empresaId;
       const [rows] = await pool.query<any[]>(
-        `SELECT a.id, a.assunto, a.concluida, COALESCE(pa.id, pn.id) AS pessoa_id,
-                COALESCE(NULLIF(pa.whatsapp, ''), NULLIF(pa.telefone, ''), NULLIF(pn.whatsapp, ''), pn.telefone) AS telefone,
-                IF(COALESCE(NULLIF(pa.whatsapp, ''), NULLIF(pa.telefone, '')) IS NULL, pn.nome, pa.nome) AS nome
+        `SELECT a.id, a.assunto, a.concluida, pa.id AS pessoa_id,
+                COALESCE(NULLIF(pa.whatsapp, ''), pa.telefone) AS telefone, pa.nome
            FROM atividades a
            LEFT JOIN pessoas pa ON pa.id = a.pessoa_id
-           LEFT JOIN negocios n ON n.id = a.negocio_id
-           LEFT JOIN pessoas pn ON pn.id = n.pessoa_id
           WHERE a.id = ? AND a.empresa_id = ?`,
         [req.params.id, emp],
       );
@@ -298,14 +294,8 @@ export function createConversasRouter(): Router {
       if (!TELEFONE.test(telefone)) return res.status(400).json({ error: 'Telefone inválido.' });
       const emp = res.locals.empresaId;
       const dono = await donoDoTelefone(emp, telefone);
-      await pool.query('UPDATE whatsapp_mensagens SET pessoa_id = ?, contato_id = ?, lead_id = ? WHERE empresa_id = ? AND telefone = ?', [
-        dono.pessoa_id,
-        dono.contato_id,
-        dono.pessoa_id ? null : (dono.lead_id ?? null),
-        emp,
-        telefone,
-      ]);
-      res.json({ success: true, pessoa_id: dono.pessoa_id, lead_id: dono.lead_id ?? null });
+      await pool.query('UPDATE whatsapp_mensagens SET pessoa_id = ?, contato_id = ? WHERE empresa_id = ? AND telefone = ?', [dono.pessoa_id, dono.contato_id, emp, telefone]);
+      res.json({ success: true, pessoa_id: dono.pessoa_id });
     } catch (err: any) {
       falha(res, err);
     }
@@ -542,21 +532,20 @@ export function createConversasRouter(): Router {
       const minhas = req.query.minhas === '1';
       const eu = res.locals.usuario.id;
       const chatbot: any = await lerConfig(String(res.locals.empresaId), 'whatsapp', 'chatbot');
-      // A Automação de cada número: quem veio pelo WhatsApp das campanhas é atendido pela das campanhas
-      const jornadas = { provedor: await lerJornadaConfig(res.locals.empresaId), campanhas: await lerJornadaConfig(res.locals.empresaId, 'campanhas') };
+      const jornada = await lerJornadaConfig(res.locals.empresaId);
       const [rows] = await pool.query<any[]>(
-        `SELECT w.telefone, x.pessoa_id, COALESCE(p.nome, ld.nome) AS nome, IF(x.pessoa_id, NULL, ld.id) AS lead_id, x.contato_id, c.nome AS contato_nome, COALESCE(c.departamento, c.cargo) AS contato_setor,
+        `SELECT w.telefone, x.pessoa_id, p.nome, x.contato_id, c.nome AS contato_nome, COALESCE(c.departamento, c.cargo) AS contato_setor,
                 ${NOME_CONTATO('w')} AS nome_contato, w.direcao, w.tipo, w.texto, w.arquivo_nome, w.situacao,
                 DATE_FORMAT(w.data_hora, '%Y-%m-%d %H:%i:%s') AS data_hora, x.nao_vistas, x.encerrada, d.nome AS departamento,
                 w.privado_departamento_id, (SELECT dp.nome FROM departamentos dp WHERE dp.id = w.privado_departamento_id) AS privado_departamento,
-                wc.atendimento, wc.atendente_id, COALESCE(wc.conta, 'provedor') AS conta, ua.nome AS atendente_nome, tp.nome AS tecnico_padrao_nome, DATE_FORMAT(wc.atendido_em, '%Y-%m-%d %H:%i:%s') AS atendido_em,
+                wc.atendimento, wc.atendente_id, ua.nome AS atendente_nome, tp.nome AS tecnico_padrao_nome, DATE_FORMAT(wc.atendido_em, '%Y-%m-%d %H:%i:%s') AS atendido_em,
                 DATE_FORMAT(COALESCE(wc.humano_desde, w.data_hora), '%Y-%m-%d %H:%i:%s') AS aguardando_desde,
                 -- Quando o cliente chegou: a 1ª mensagem dele depois do último encerramento
                 (SELECT DATE_FORMAT(MIN(r.data_hora), '%Y-%m-%d %H:%i:%s') FROM whatsapp_mensagens r
                   WHERE r.empresa_id = w.empresa_id AND r.telefone = w.telefone AND r.direcao = 'recebida' AND r.id > COALESCE(x.ultimo_encerramento, 0)) AS chegou_em,
                 -- Pausada: o último evento é a pausa, e depois dela não começou outra espera
                 COALESCE(ev.texto LIKE 'Pausado por%' AND ev.data_hora >= COALESCE(wc.humano_desde, ev.data_hora), 0) AS pausada
-           FROM (SELECT telefone, MAX(IF(tipo NOT IN ('encerramento', 'evento'), id, NULL)) AS ultima, ${PESSOA_RECENTE()} AS pessoa_id, ${CONTATO_RECENTE()} AS contato_id, ${LEAD_RECENTE()} AS lead_id,
+           FROM (SELECT telefone, MAX(IF(tipo NOT IN ('encerramento', 'evento'), id, NULL)) AS ultima, ${PESSOA_RECENTE()} AS pessoa_id, ${CONTATO_RECENTE()} AS contato_id,
                         MAX(IF(tipo = 'evento', id, NULL)) AS ultimo_evento,
                         MAX(IF(tipo = 'encerramento', id, NULL)) AS ultimo_encerramento,
                         SUM(direcao = 'recebida' AND vista = 0) AS nao_vistas,
@@ -567,19 +556,18 @@ export function createConversasRouter(): Router {
            JOIN whatsapp_mensagens w ON w.id = x.ultima
            LEFT JOIN whatsapp_mensagens ev ON ev.id = x.ultimo_evento
            LEFT JOIN pessoas p ON p.id = x.pessoa_id
-           LEFT JOIN leads ld ON ld.id = x.lead_id AND x.pessoa_id IS NULL
            LEFT JOIN pessoas_contatos c ON c.id = x.contato_id
            LEFT JOIN whatsapp_conversas wc ON wc.empresa_id = w.empresa_id AND wc.telefone = w.telefone
            LEFT JOIN departamentos d ON d.id = wc.departamento_id
            LEFT JOIN usuarios ua ON ua.id = wc.atendente_id
            LEFT JOIN usuarios tp ON tp.id = p.tecnico_padrao_id
-          WHERE (? = '' OR p.nome LIKE ? OR ld.nome LIKE ? OR c.nome LIKE ? OR ${NOME_CONTATO('w')} LIKE ? OR (? <> '' AND w.telefone LIKE ?))
+          WHERE (? = '' OR p.nome LIKE ? OR c.nome LIKE ? OR ${NOME_CONTATO('w')} LIKE ? OR (? <> '' AND w.telefone LIKE ?))
             AND (? = 0 OR wc.atendente_id = ?
                  OR (wc.atendente_id IS NULL AND (wc.departamento_id IS NULL OR p.tecnico_padrao_id = ?
                      OR wc.departamento_id = (SELECT u.departamento_id FROM usuarios u WHERE u.id = ?))))
           ORDER BY w.data_hora DESC, w.id DESC
           LIMIT 200`,
-        [res.locals.empresaId, busca, `%${busca}%`, `%${busca}%`, `%${busca}%`, `%${busca}%`, digitos, `%${digitos}%`, minhas ? 1 : 0, eu, eu, eu],
+        [res.locals.empresaId, busca, `%${busca}%`, `%${busca}%`, `%${busca}%`, digitos, `%${digitos}%`, minhas ? 1 : 0, eu, eu, eu],
       );
       // Estado: em atendimento (alguém pegou), aguardando (humano sem atendente; sem bot, quando o
       // cliente foi o último a escrever) ou com o bot
@@ -587,7 +575,7 @@ export function createConversasRouter(): Router {
         rows.map(({ atendimento, atendente_id, encerrada, ...linha }) => {
           // Última mensagem privada de outro departamento: a prévia não mostra o conteúdo
           const r = mascararPrivada(res, linha);
-          const comBot = jornadaAtende(r.conta === 'campanhas' ? jornadas.campanhas : jornadas.provedor, r.telefone);
+          const comBot = jornadaAtende(jornada, r.telefone);
           // Encerrada fica marcada até o cliente mandar mensagem de novo (aí começa outro ciclo)
           const estado = atendente_id
             ? 'atendimento'
@@ -662,13 +650,12 @@ export function createConversasRouter(): Router {
   router.get('/whatsapp/mensagens/:id/midia', async (req: Request, res: Response) => {
     try {
       const [rows] = await pool.query<any[]>(
-        "SELECT wa_id, tipo, arquivo_nome, telefone, privado_departamento_id, disparo_id FROM whatsapp_mensagens WHERE id = ? AND empresa_id = ? AND tipo IN ('imagem', 'figurinha', 'audio', 'video', 'documento')",
+        "SELECT wa_id, tipo, arquivo_nome, telefone, privado_departamento_id FROM whatsapp_mensagens WHERE id = ? AND empresa_id = ? AND tipo IN ('imagem', 'figurinha', 'audio', 'video', 'documento')",
         [Number(req.params.id) || 0, res.locals.empresaId],
       );
       if (!rows[0]?.wa_id) return res.status(404).json({ error: 'Arquivo não encontrado.' });
       if (!podeVerPrivada(res, rows[0].privado_departamento_id)) return res.status(403).json({ error: 'Mensagem privada de outro departamento.' });
-      // Campanha sai pelo número das campanhas, mesmo que a conversa seja do principal (o cliente ainda não respondeu)
-      const { mimetype, dados } = await midiaDaMensagem(res.locals.empresaId, rows[0].wa_id, rows[0].telefone, rows[0].disparo_id ? 'campanhas' : undefined);
+      const { mimetype, dados } = await midiaDaMensagem(res.locals.empresaId, rows[0].wa_id);
       res.set({ 'Cache-Control': 'private, max-age=86400', 'X-Content-Type-Options': 'nosniff' });
       if (rows[0].tipo === 'documento') return res.attachment(rows[0].arquivo_nome || 'arquivo').type(mimetype).send(dados);
       if (!/^(image|audio|video)\//.test(mimetype)) return res.status(415).json({ error: 'Tipo de arquivo não exibível.' });
@@ -695,16 +682,10 @@ export function createConversasRouter(): Router {
       );
       let pessoaId: number | null = ult[0]?.pessoa_id ?? null;
       let contatoId: number | null = ult[0]?.contato_id ?? null;
-      let leadId: number | null = null;
       if (!pessoaId) {
-        let lead: number | null | undefined;
-        ({ pessoa_id: pessoaId, contato_id: contatoId, lead_id: lead } = await donoDoTelefone(emp, telefone));
+        ({ pessoa_id: pessoaId, contato_id: contatoId } = await donoDoTelefone(emp, telefone));
         if (pessoaId) {
-          await pool.query('UPDATE whatsapp_mensagens SET pessoa_id = ?, contato_id = ?, lead_id = NULL WHERE empresa_id = ? AND telefone = ? AND pessoa_id IS NULL', [pessoaId, contatoId, emp, telefone]);
-        } else if (lead) {
-          // Lead cadastrado depois das mensagens (Cadastrar da conversa): liga as que estão sem dono
-          leadId = lead;
-          await pool.query('UPDATE whatsapp_mensagens SET lead_id = ? WHERE empresa_id = ? AND telefone = ? AND pessoa_id IS NULL AND lead_id IS NULL', [lead, emp, telefone]);
+          await pool.query('UPDATE whatsapp_mensagens SET pessoa_id = ?, contato_id = ? WHERE empresa_id = ? AND telefone = ? AND pessoa_id IS NULL', [pessoaId, contatoId, emp, telefone]);
         }
       }
       await pool.query("UPDATE whatsapp_mensagens SET vista = 1 WHERE empresa_id = ? AND telefone = ? AND direcao = 'recebida' AND vista = 0", [emp, telefone]);
@@ -714,7 +695,7 @@ export function createConversasRouter(): Router {
                   rq.direcao AS resposta_direcao, rq.tipo AS resposta_tipo, rq.texto AS resposta_texto, rq.arquivo_nome AS resposta_arquivo,
                   rq.privado_departamento_id AS resposta_privado_id,
                   w.privado_departamento_id, dp.nome AS privado_departamento,
-                  (w.disparo_id IS NOT NULL) AS campanha, (w.origem IS NOT NULL AND w.origem NOT LIKE 'bot:%') AS automatica,
+                  (w.origem IS NOT NULL AND w.origem NOT LIKE 'bot:%') AS automatica,
                   (w.origem LIKE 'bot:%') AS bot, w.erro, DATE_FORMAT(w.data_hora, '%Y-%m-%d %H:%i:%s') AS data_hora,
                   -- Segundos que faltam para quem enviou poder apagar (1 minuto); null = não pode
                   IF(w.usuario_id = ? AND w.direcao = 'enviada' AND w.wa_id IS NOT NULL AND w.tipo <> 'apagada'
@@ -728,14 +709,12 @@ export function createConversasRouter(): Router {
         [res.locals.usuarioId, emp, telefone],
       );
       const [pessoa] = pessoaId ? await pool.query<any[]>('SELECT id, nome FROM pessoas WHERE id = ? AND empresa_id = ?', [pessoaId, emp]) : [[]];
-      const [lead] = leadId ? await pool.query<any[]>('SELECT id, nome FROM leads WHERE id = ? AND empresa_id = ?', [leadId, emp]) : [[]];
       const [contato] = contatoId
         ? await pool.query<any[]>('SELECT id, nome, cargo, departamento FROM pessoas_contatos WHERE id = ? AND empresa_id = ?', [contatoId, emp])
         : [[]];
       // Situação do atendimento: com o bot (ou jornada), aguardando alguém atender ou em atendimento
       const chatbot: any = await lerConfig(String(emp), 'whatsapp', 'chatbot');
-      const conta = await contaDaConversa(emp, telefone);
-      const comBot = jornadaAtende(await lerJornadaConfig(emp, conta), telefone);
+      const comBot = jornadaAtende(await lerJornadaConfig(emp), telefone);
       const atendimento = await atendimentoAtual(emp, telefone, minutosDevolver(chatbot));
       const [cv] = await pool.query<any[]>(
         `SELECT d.nome AS departamento, c.atendente_id, u.nome AS atendente_nome, DATE_FORMAT(c.atendido_em, '%Y-%m-%d %H:%i:%s') AS atendido_em,
@@ -752,7 +731,6 @@ export function createConversasRouter(): Router {
       const estado = c.atendente_id ? 'atendimento' : Number(c.encerrada) ? 'encerrado' : atendimento === 'humano' || !comBot ? 'aguardando' : 'bot';
       res.json({
         pessoa: pessoa[0] ?? null,
-        lead: lead[0] ?? null,
         contato: contato[0] ?? null,
         atendimento: comBot ? atendimento : null,
         estado,
@@ -762,15 +740,10 @@ export function createConversasRouter(): Router {
         eu_atendo: Boolean(c.atendente_id) && Number(c.atendente_id) === Number(res.locals.usuarioId),
         sou_admin: res.locals.usuario?.tipo === 'admin',
         com_bot: comBot,
-        /** Número por onde o cliente escreveu por último: a tela já vem com ele escolhido para responder */
-        conta,
-        /** Há WhatsApp das campanhas configurado: a tela mostra a escolha do número */
-        tem_campanhas: Boolean(((await lerConfig(String(emp), 'whatsapp', 'campanhas')) as any)?.provedor),
         encerravel: Boolean(Number(c.encerravel)),
         departamento: c.departamento ?? null, bot_nome: chatbot?.nome || null, nome_contato: ult[0]?.nome_contato ?? null, mensagens: mensagens.map(({ resposta_de, resposta_direcao, resposta_tipo, resposta_texto, resposta_arquivo, resposta_privado_id, ...m }) =>
           mascararPrivada(res, {
             ...m,
-            campanha: Boolean(m.campanha),
             automatica: Boolean(m.automatica),
             bot: Boolean(m.bot),
             // Mensagem citada (resposta): privada de outro departamento vai sem o conteúdo
@@ -825,11 +798,9 @@ export function createConversasRouter(): Router {
       const assinatura = String(res.locals.usuario?.nome ?? '').trim() || undefined;
       // Responder: a mensagem escolhida aparece citada no WhatsApp do cliente
       const citacao = await citacaoDa(emp, telefone, req.body?.resposta_de);
-      // Número escolhido na tela (padrão: por onde o cliente escreveu por último)
-      const conta = req.body?.conta ? contaWhats(req.body.conta) : await contaDaConversa(emp, telefone);
       const numero = arquivo
-        ? await enviarMidiaWhatsApp(emp, telefone, arquivo, reg, assinatura, citacao, conta)
-        : await enviarWhatsApp(emp, telefone, texto, reg, assinatura, citacao, conta);
+        ? await enviarMidiaWhatsApp(emp, telefone, arquivo, reg, assinatura, citacao)
+        : await enviarWhatsApp(emp, telefone, texto, reg, assinatura, citacao);
       // Conversa aberta pela atividade WhatsApp: a mensagem enviada conclui a atividade
       let concluida = false;
       const atividadeId = Number(req.body?.atividade_id) || null;
@@ -839,10 +810,6 @@ export function createConversasRouter(): Router {
           [Number(res.locals.usuarioId) || null, atividadeId, emp],
         );
         concluida = r.affectedRows > 0;
-        if (concluida) {
-          const [a] = await pool.query<any[]>('SELECT negocio_id FROM atividades WHERE id = ?', [atividadeId]);
-          if (a[0]?.negocio_id) await sincronizarNegocio(a[0].negocio_id);
-        }
       }
       res.json({ success: true, telefone: numero, atividade_concluida: concluida });
     } catch (err: any) {

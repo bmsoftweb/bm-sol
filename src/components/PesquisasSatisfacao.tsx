@@ -63,14 +63,13 @@ const OBJETIVO_PADRAO =
 const descricaoSugerida = (dataDe: string | null | undefined) => (dataDe ? `Pesquisa dos atendimentos do dia ${formatDateBR(dataDe)}` : '');
 
 /**
- * Pesquisa nova: atendimentos do dia útil anterior (ontem; na segunda, a sexta), pelo WhatsApp das campanhas.
+ * Pesquisa nova: atendimentos do dia útil anterior (ontem; na segunda, a sexta), pelo WhatsApp.
  * Calculado na hora: a tela pode ficar aberta de um dia para o outro
  */
 const vazia = (): DadosPesquisa => ({
   descricao: descricaoSugerida(diaUtilAnteriorIso()),
   objetivo: OBJETIVO_PADRAO,
   canal: 'whatsapp',
-  conta: 'campanhas',
   filtro: { data_de: diaUtilAnteriorIso(), data_ate: diaUtilAnteriorIso(), origens: [], notas: [], excluir_dias: 30 },
   quantidade: 20,
   responsavel_id: null,
@@ -336,12 +335,12 @@ export const PesquisaEditor: React.FC<{
   const [retorno, setRetorno] = useState<number | null>(null);
   /** Recarrega a lista dos atendimentos (CrudView embutido) */
   const [versaoItens, setVersaoItens] = useState(0);
-  const [opcoes, setOpcoes] = useState<{ segmentos: OpcaoRef[]; usuarios: OpcaoRef[]; departamentos: OpcaoRef[]; categorias: OpcaoRef[] }>({ segmentos: [], usuarios: [], departamentos: [], categorias: [] });
+  const [opcoes, setOpcoes] = useState<{ usuarios: OpcaoRef[]; departamentos: OpcaoRef[]; categorias: OpcaoRef[] }>({ usuarios: [], departamentos: [], categorias: [] });
   const recursoItens = resources.find((r) => r.name === 'pesquisa_itens');
 
   useEffect(() => {
-    Promise.all([fetchOptions('segmentos', 'nome'), fetchOptions('usuarios', 'nome'), fetchOptions('departamentos', 'nome'), fetchOptions('chamado_categorias', 'nome')])
-      .then(([segmentos, usuarios, departamentos, categorias]) => setOpcoes({ segmentos, usuarios, departamentos, categorias }))
+    Promise.all([fetchOptions('usuarios', 'nome'), fetchOptions('departamentos', 'nome'), fetchOptions('chamado_categorias', 'nome')])
+      .then(([usuarios, departamentos, categorias]) => setOpcoes({ usuarios, departamentos, categorias }))
       .catch(() => {});
   }, []);
 
@@ -349,7 +348,7 @@ export const PesquisaEditor: React.FC<{
     try {
       const p = await fetchPesquisa(id);
       setAtual(p);
-      setV({ descricao: p.descricao, objetivo: p.objetivo ?? '', canal: p.canal, conta: p.conta, filtro: p.filtro, quantidade: p.quantidade, responsavel_id: p.responsavel_id });
+      setV({ descricao: p.descricao, objetivo: p.objetivo ?? '', canal: p.canal, filtro: p.filtro, quantidade: p.quantidade, responsavel_id: p.responsavel_id });
       // A prévia é do momento (o que ainda não foi sorteado): só aparece depois de "Ver quantos"
       setPrevia(null);
       setAba(irPara ?? (p.itens.length ? 'selecionados' : 'filtro'));
@@ -455,16 +454,6 @@ export const PesquisaEditor: React.FC<{
                 <textarea id="ps-objetivo" rows={2} value={v.objetivo ?? ''} onChange={(e) => setV({ ...v, objetivo: e.target.value })} maxLength={4000} placeholder="O que a pesquisa quer descobrir (ex.: se o problema foi resolvido e como foi o tempo de resposta)" className={`${INPUT_CLASS} w-full resize-y`} />
                 <span className={HINT_CLASS}>Vai para a IA (WhatsApp e e-mail) e para o roteiro de quem liga. A nota é sempre de 1 a 5.</span>
               </div>
-              {v.canal === 'whatsapp' && (
-                <div className={FIELD_CLASS}>
-                  <label htmlFor="ps-conta" className={LABEL_CLASS}>Sai pelo</label>
-                  <SelectAuto id="ps-conta" value={v.conta} disabled={Boolean(atual && atual.situacao !== 'rascunho')} onChange={(e) => setV({ ...v, conta: e.target.value as DadosPesquisa['conta'] })} className={`${INPUT_CLASS} w-full cursor-pointer`}>
-                    <option value="campanhas">WhatsApp das campanhas</option>
-                    <option value="provedor">WhatsApp principal</option>
-                  </SelectAuto>
-                  <span className={HINT_CLASS}>Sem o WhatsApp das campanhas configurado, sai pelo principal</span>
-                </div>
-              )}
               {v.canal === 'ligacao' && (
                 <div className={FIELD_CLASS}>
                   <label htmlFor="ps-responsavel" className={LABEL_CLASS}>Quem liga</label>
@@ -518,9 +507,6 @@ export const PesquisaEditor: React.FC<{
                   {Boolean(f.notas?.length) && <Toggle size="sm" checked={Boolean(f.sem_nota)} onChange={(x) => setFiltro({ sem_nota: x })} label="e os sem avaliação" />}
                 </div>
                 <span className={HINT_CLASS}>Nenhuma marcada = qualquer nota, com ou sem avaliação</span>
-              </div>
-              <div className="sm:col-span-2">
-                <Multipla rotulo="Segmentos do cliente" opcoes={opcoes.segmentos} valor={f.segmentos} onChange={(x) => setFiltro({ segmentos: x })} vazio="Todos — acrescentar segmento" />
               </div>
               <div className="sm:col-span-2">
                 <Clientes valor={f.pessoas} nomes={nomesClientes} onChange={(x, nomes) => (setNomesClientes(nomes), setFiltro({ pessoas: x }))} />

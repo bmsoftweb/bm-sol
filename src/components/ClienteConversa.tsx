@@ -6,13 +6,13 @@ import { SelectBusca } from './SelectBusca';
 import { AvisoErro } from './AvisoErro';
 import { INPUT_CLASS, LABEL_CLASS, FIELD_CLASS } from '../utils/formStyles';
 
-type Recurso = 'pessoas' | 'pessoas_contatos' | 'leads';
+type Recurso = 'pessoas' | 'pessoas_contatos';
 
 interface Props {
   telefone: string;
   /** Número formatado para o cadastro: (47) 98906-9435 */
   fone: string;
-  /** Cadastro que hoje tem o número (o contato, senão a pessoa, senão o lead) */
+  /** Cadastro que hoje tem o número (o contato, senão a pessoa) */
   recurso: Recurso;
   id: number;
   nomeAtual: string;
@@ -25,7 +25,6 @@ interface Props {
 const CAMPOS: Record<Recurso, string[]> = {
   pessoas: ['whatsapp', 'telefone'],
   pessoas_contatos: ['whatsapp', 'celular', 'telefone'],
-  leads: ['whatsapp', 'telefone'],
 };
 const oito = (t: unknown) => String(t ?? '').replace(/\D/g, '').slice(-8);
 

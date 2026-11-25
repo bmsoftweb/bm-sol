@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { SelectAuto } from './SelectAuto';
-import { Save, Loader2, Eye, EyeOff, X, Columns3, Search, Move, Scaling, RotateCcw, Lock } from 'lucide-react';
+import { Save, Loader2, Eye, EyeOff, X, Columns3, Search, Move, Scaling, RotateCcw } from 'lucide-react';
 import { Endereco, FieldDef, Id, OpcaoRef, RegistroCrud, ResourceDef } from '../types';
 import { maskCNPJ, cleanCNPJ, toInputDate, toInputDateTime, hojeIso, formatDateTimeBR } from '../utils/formatters';
 import { INPUT_CLASS, LABEL_CLASS, FIELD_CLASS, HINT_CLASS } from '../utils/formStyles';
@@ -12,10 +12,9 @@ import { ImagemField } from './ImagemField';
 import { FotosField } from './FotosField';
 import type { TamanhoCampo } from '../utils/configListas';
 import { AvisoErro } from './AvisoErro';
-import { fetchCamposPersonalizados, fetchEnderecos, fetchParticipantes, travaContrato } from '../services/api';
+import { fetchCamposPersonalizados, fetchEnderecos, fetchParticipantes } from '../services/api';
 import { EnderecosPessoa } from './EnderecosPessoa';
 import { ParticipantesNegocio } from './ParticipantesNegocio';
-import { CriteriosSegmento } from './CriteriosSegmento';
 import { CorField } from './CorField';
 
 interface RecordFormProps {
@@ -93,7 +92,7 @@ function initialValue(field: FieldDef, record: RegistroCrud | null): any {
     if (field.type === 'datetime') return toInputDateTime(raw);
     if (field.type === 'cnpj') return maskCNPJ(String(raw));
     if (field.type === 'password') return '';
-    if (field.type === 'criterios' || field.type === 'fotos') return raw;
+    if (field.type === 'fotos') return raw;
     if (field.type === 'time') return String(raw).slice(0, 5);
     return String(raw);
   }
@@ -170,15 +169,15 @@ export const RecordForm: React.FC<RecordFormProps> = ({
     };
   }, [comEnderecos, record, resource]);
 
-  /** Negócio e atividade: usuários envolvidos, também gravados junto no Salvar (null = ainda carregando) */
-  const comParticipantes = resource.name === 'negocios' || resource.name === 'atividades';
-  /** Quem já responde pelo registro não aparece como envolvido: o proprietário do negócio, quem executa a atividade */
-  const campoDono = resource.name === 'atividades' ? 'executor_id' : 'proprietario_id';
+  /** Atividade: usuários envolvidos, também gravados junto no Salvar (null = ainda carregando) */
+  const comParticipantes = resource.name === 'atividades';
+  /** Quem executa a atividade não aparece como envolvido */
+  const campoDono = 'executor_id';
   const [participantes, setParticipantes] = useState<number[] | null>(comParticipantes && !record ? [] : null);
   useEffect(() => {
     if (!comParticipantes || !record) return;
     let vivo = true;
-    fetchParticipantes(record[resource.pk[0]] as string, resource.name as 'negocios' | 'atividades')
+    fetchParticipantes(record[resource.pk[0]] as string)
       .then((l) => vivo && setParticipantes(l.map((p) => Number(p.id))))
       .catch((err) => vivo && setError(err.message || 'Não foi possível carregar os envolvidos.'));
     return () => {
@@ -365,30 +364,8 @@ export const RecordForm: React.FC<RecordFormProps> = ({
     setRevealPassword(false);
   }, [record, editableFields]);
 
-  /** Contrato assinado e travado: campos que só mudam por aditivo (null = nada travado) */
-  const [travados, setTravados] = useState<Set<string> | null>(null);
-  const contratoId = resource.name === 'contratos' && record ? record.id : null;
-  useEffect(() => {
-    setTravados(null);
-    if (!contratoId) return;
-    let vivo = true;
-    travaContrato(contratoId as number)
-      .then((t) => {
-        if (vivo && t.travado) setTravados(new Set(resource.fields.map((f) => f.name).filter((n) => !t.campos_livres.includes(n))));
-      })
-      .catch(() => {});
-    return () => {
-      vivo = false;
-    };
-  }, [contratoId, resource.fields]);
-
-  /** Campanha já iniciada: só a situação muda (o servidor descarta o resto) */
-  const campanhaIniciada = resource.name === 'campanhas' && Boolean(record?.iniciada_em);
-
-  /** Campo desabilitado pela regra disabledWhen do metadado (ex.: grupo de um admin), pela trava do contrato ou da campanha iniciada */
+  /** Campo desabilitado pela regra disabledWhen do metadado (ex.: grupo de um admin) */
   const estaDesabilitado = (field: FieldDef, vals: Record<string, any> = values) =>
-    Boolean(travados?.has(field.name)) ||
-    (campanhaIniciada && field.name !== 'situacao') ||
     Boolean(field.disabledWhen && String(vals[field.disabledWhen.field] ?? '') === field.disabledWhen.equals);
 
   const setValue = (name: string, value: any) => {
@@ -511,8 +488,6 @@ export const RecordForm: React.FC<RecordFormProps> = ({
       case 'cor':
         return <CorField id={inputId} value={String(value ?? '')} onChange={(v) => setValue(field.name, v)} />;
 
-      case 'criterios':
-        return <CriteriosSegmento id={inputId} value={value} onChange={(v) => setValue(field.name, v)} />;
 
       case 'textarea':
         return (
@@ -630,7 +605,7 @@ export const RecordForm: React.FC<RecordFormProps> = ({
   };
 
   /** Campos longos ocupam a linha inteira do grid */
-  const isWide = (f: FieldDef) => f.type === 'textarea' || f.type === 'cor' || f.type === 'imagem' || f.type === 'criterios' || f.type === 'fotos' || f.maxLength === 255;
+  const isWide = (f: FieldDef) => f.type === 'textarea' || f.type === 'cor' || f.type === 'imagem' || f.type === 'fotos' || f.maxLength === 255;
 
   // "Customizar layout": cada campo ganha borda e alças; a largura anda em colunas de um grid
   // de 4 (no desktop) e a altura é a do controle, em px.
@@ -758,24 +733,6 @@ export const RecordForm: React.FC<RecordFormProps> = ({
           )}
           {error && (
             <AvisoErro mensagem={error} onFechar={() => setError(null)} />
-          )}
-
-          {travados && (
-            <div className="flex items-start gap-2 p-3 rounded-lg border border-stone-300 dark:border-stone-700 bg-stone-50 dark:bg-stone-950/60 text-xs text-stone-700 dark:text-stone-300">
-              <Lock className="w-4 h-4 shrink-0" />
-              <span>
-                <b>Contrato assinado: travado.</b> Os campos em cinza só mudam por aditivo (Documentos › Liberar para aditivo, por um
-                administrador). Os demais continuam livres.
-              </span>
-            </div>
-          )}
-          {campanhaIniciada && (
-            <div className="flex items-start gap-2 p-3 rounded-lg border border-stone-300 dark:border-stone-700 bg-stone-50 dark:bg-stone-950/60 text-xs text-stone-700 dark:text-stone-300">
-              <Lock className="w-4 h-4 shrink-0" />
-              <span>
-                <b>Campanha iniciada: travada.</b> Só a situação muda (pausar, cancelar ou concluir). Para outro texto ou outro público, crie outra campanha.
-              </span>
-            </div>
           )}
 
           <div ref={gradeRef} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

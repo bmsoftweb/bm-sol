@@ -2,21 +2,18 @@ import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { pool } from './db.js';
 import { FieldDef, ResourceDef, RESOURCES, getResource, writableFields, columnNames, colunaSql } from './schema.js';
-import { aposGravar, antesDeExcluir, antesDeGravar } from './regras.js';
+import { aposGravar, antesDeGravar } from './regras.js';
 import { exigirAcesso } from './permissoes.js';
 import { gravarEnderecos, normalizarEnderecos } from './enderecos.js';
-import { gravarEnvolvidosAtividade, gravarParticipantes, normalizarParticipantes } from './participantes.js';
-import { conferirTrava, contratoDoItem, recalcularContrato } from './contratos.js';
+import { gravarEnvolvidosAtividade, normalizarParticipantes } from './participantes.js';
 import { apagarFotosRemovidas, fotosDoProduto, prepararFotos } from './fotos.js';
-import { apagarEventoGoogle, TIPOS_NA_AGENDA } from './agendaGoogle.js';
-import { soltarLead } from './leads.js';
 /** Metadados enviados ao navegador: a consulta própria dos combos fica só no servidor */
 // O SQL próprio (combos, colunas calculadas) não sai do servidor
 const RESOURCES_PUBLICOS = RESOURCES.map(({ optionsSql, minhasSql, ...r }) => ({ ...r, minhas: Boolean(minhasSql), fields: r.fields.map(({ sql, ...f }) => f) }));
 
 /**
  * Atividade só é excluída pelo dono (quem criou) ou por um administrador. Sem autor gravado (antigas, criadas pelo
- * Bot, pendências, Google), o dono é o executor. Mesma regra de podeExcluirAtividade (src/utils/crm.ts).
+ * Bot, pendências), o dono é o executor. Mesma regra de podeExcluirAtividade (src/utils/crm.ts).
  */
 async function conferirDonoAtividade(id: string, res: Response) {
   const u = res.locals.usuario;
@@ -80,9 +77,6 @@ function coerceValue(field: FieldDef, raw: any): any {
       if (!/^#[0-9A-F]{6}$/.test(cor)) throw new Error(`O campo "${field.label}" precisa ser uma cor (#RRGGBB).`);
       return cor;
     }
-    case 'criterios':
-      // Validado e normalizado em antesDeGravar (regras.ts)
-      return typeof raw === 'string' ? raw : JSON.stringify(raw);
     case 'personalizados': {
       // Objeto { nome_do_campo: valor } vindo do formulário; o conteúdo é livre,
       // mas precisa ser um objeto simples e caber na coluna
@@ -152,7 +146,6 @@ export function friendlyDbError(err: any, labelSingular = 'registro'): string {
   switch (err?.code) {
     case 'ER_DUP_ENTRY':
       if (/uk_produtos_empresa_sku/.test(err.sqlMessage || '')) return 'Já existe um produto com este SKU nesta empresa.';
-      if (/uk_segmentos_empresa_nome/.test(err.sqlMessage || '')) return 'Já existe um segmento com este nome nesta empresa.';
       return `Já existe um registro de ${labelSingular} com esse valor único (${err.sqlMessage?.match(/for key '(.+?)'/)?.[1] || 'chave duplicada'}).`;
     case 'ER_ROW_IS_REFERENCED_2':
     case 'ER_ROW_IS_REFERENCED':
@@ -218,10 +211,6 @@ export function createCrudRouter() {
       const lista = normalizarEnderecos(body.enderecos);
       return (id: string) => gravarEnderecos(empresaId, id, lista);
     }
-    if (resource.name === 'negocios' && body && 'participantes' in body) {
-      const ids = await normalizarParticipantes(body.participantes, empresaId);
-      return (id: string) => gravarParticipantes(empresaId, id, ids);
-    }
     if (resource.name === 'atividades' && body && 'envolvidos' in body) {
       const ids = await normalizarParticipantes(body.envolvidos, empresaId);
       return (id: string) => gravarEnvolvidosAtividade(id, ids);
@@ -273,7 +262,7 @@ export function createCrudRouter() {
       // Lista do menu: só com permissão. Painel de detalhe (filter_field) e combos seguem liberados,
       // para as telas que o usuário acessa continuarem mostrando os dados ligados
       // Disparos é aba da tela de Campanhas: vale o acesso a Campanhas
-      if (!req.query.filter_field) exigirAcesso(res, resource.name === 'campanha_disparos' ? 'campanhas' : resource.name, resource.label);
+      if (!req.query.filter_field) exigirAcesso(res, resource.name, resource.label);
 
       const page = Math.max(1, Number(req.query.page) || 1);
       const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 25));
@@ -298,7 +287,7 @@ export function createCrudRouter() {
         }
       }
 
-      // Filtro exato por coluna (painel mestre-detalhe): ?filter_field=negocio_id&filter_value=...
+      // Filtro exato por coluna (painel mestre-detalhe): ?filter_field=os_id&filter_value=...
       const filterField = String(req.query.filter_field || '');
       const filterValue = req.query.filter_value;
       if (filterField && filterValue !== undefined && filterValue !== '' && columnNames(resource).includes(filterField)) {
@@ -462,7 +451,6 @@ export function createCrudRouter() {
       validateRequired(resource, payload, false);
       await validarVinculos(resource, payload, empresaId);
       await antesDeGravar(resource.name, payload, empresaId);
-      await conferirTrava(resource.name, 'incluir', null, payload);
       // Atividade incluída para outro usuário: quem incluiu fica como envolvido (acompanha o que pediu)
       const eu = Number(res.locals.usuarioId);
       const corpo =
@@ -472,17 +460,8 @@ export function createCrudRouter() {
       const filhos = await filhosDoCorpo(resource, corpo, empresaId);
 
       if (resource.tenantColumn) payload[resource.tenantColumn] = empresaId;
-      // Negócio novo sem proprietário escolhido fica com quem o criou
-      if (resource.name === 'negocios' && !payload.proprietario_id) payload.proprietario_id = res.locals.usuario.id;
-      if (resource.name === 'campanhas') payload.criada_por = res.locals.usuario.id;
       // Dono da atividade (só ele ou um administrador exclui)
       if (resource.name === 'atividades') payload.criado_por = eu;
-      if (resource.name === 'contratos') {
-        // Número visível: sequência por empresa (a chave única empresa+número barra repetição)
-        const [[n]] = await pool.query<any>('SELECT COALESCE(MAX(numero), 0) + 1 AS n FROM contratos WHERE empresa_id = ?', [empresaId]);
-        payload.numero = n.n;
-        if (!payload.proprietario_id) payload.proprietario_id = res.locals.usuario.id;
-      }
       if (resource.name === 'ordens_servico') {
         const [[n]] = await pool.query<any>('SELECT COALESCE(MAX(numero), 0) + 1 AS n FROM ordens_servico WHERE empresa_id = ?', [empresaId]);
         payload.numero = n.n;
@@ -496,9 +475,9 @@ export function createCrudRouter() {
       );
 
       const newId = String(result.insertId);
-      await aposGravar(resource.name, newId, [], pool, Number(res.locals.usuarioId) || null);
+      await aposGravar(resource.name, newId, pool, Number(res.locals.usuarioId) || null);
       if (filhos) await filhos(newId);
-      let aviso = resource.name === 'campanhas' ? await (await import('./campanhas.js')).gerarDisparosAoGravar(newId, empresaId) : null;
+      let aviso: string | null = null;
       // Visita e Reunião Externa já nascem com a OS (quem não acessa as OS só grava a atividade)
       if (resource.name === 'atividades') {
         const os = await import('./os.js');
@@ -533,14 +512,11 @@ export function createCrudRouter() {
       validateRequired(resource, payload, true);
       await validarVinculos(resource, payload, empresaId);
       await antesDeGravar(resource.name, payload, empresaId);
-      await conferirTrava(resource.name, 'alterar', req.params.id, payload);
       const filhos = await filhosDoCorpo(resource, req.body, empresaId);
 
       const cols = Object.keys(payload);
       if (!cols.length) return res.status(400).json({ error: 'Nenhuma alteração foi informada.' });
 
-      // A atividade pode ter trocado de negócio: o negócio anterior também precisa ser recalculado
-      const afetados = await antesDeExcluir(resource.name, req.params.id);
       // Fotos que saírem do produto são apagadas do Blob depois de gravar
       const fotosAntes = resource.name === 'produtos' && 'fotos' in payload ? await fotosDoProduto(req.params.id, empresaId) : null;
       const [result] = await pool.query<any>(
@@ -552,11 +528,10 @@ export function createCrudRouter() {
         return res.status(404).json({ error: `${resource.labelSingular} não encontrado.` });
       }
 
-      await aposGravar(resource.name, req.params.id, afetados, pool, Number(res.locals.usuarioId) || null);
+      await aposGravar(resource.name, req.params.id, pool, Number(res.locals.usuarioId) || null);
       if (filhos) await filhos(req.params.id);
-      const aviso = resource.name === 'campanhas' ? await (await import('./campanhas.js')).gerarDisparosAoGravar(req.params.id, empresaId) : null;
       if (fotosAntes) await apagarFotosRemovidas(fotosAntes, payload.fotos);
-      res.json({ success: true, aviso });
+      res.json({ success: true });
     } catch (err: any) {
       res.status(400).json({ error: friendlyDbError(err, resource?.labelSingular) });
     }
@@ -573,11 +548,7 @@ export function createCrudRouter() {
         return res.status(403).json({ error: `Não é permitido excluir registros em ${resource.label}.` });
       }
 
-      await conferirTrava(resource.name, 'excluir', req.params.id, null);
       if (resource.name === 'atividades') await conferirDonoAtividade(req.params.id, res);
-      const afetados = await antesDeExcluir(resource.name, req.params.id);
-      // Item de contrato: o contrato precisa ser recalculado depois que o item sair
-      const contratoAfetado = resource.name === 'contrato_itens' ? await contratoDoItem(req.params.id) : null;
       // Fotos que saem do Blob junto: as do produto e as de antes/depois da OS
       const fotosAntes =
         resource.name === 'produtos'
@@ -587,13 +558,6 @@ export function createCrudRouter() {
                 .query<any[]>('SELECT url FROM os_fotos WHERE os_id = ? AND empresa_id = ?', [req.params.id, empresaDa(res)])
                 .then(([r]) => r.map((f) => String(f.url)))
             : null;
-      // Visita/reunião levada ao Google Agenda: o evento sai junto (os outros tipos não são do CRM na agenda)
-      const eventoGoogle =
-        resource.name === 'atividades'
-          ? await pool
-              .query<any[]>('SELECT google_event_id FROM atividades WHERE id = ? AND tipo IN (?)', [req.params.id, TIPOS_NA_AGENDA])
-              .then(([r]) => r[0]?.google_event_id ?? null)
-          : null;
       const [result] = await pool.query<any>(
         resource.exclusaoLogica
           ? `UPDATE ${resource.table} t SET t.${resource.exclusaoLogica} = NOW() WHERE ${resource.scopeSql} AND t.${pkCol(resource)} = ?`
@@ -605,12 +569,8 @@ export function createCrudRouter() {
       }
 
       // Na exclusão lógica o registro continua existindo e as regras ainda o enxergam
-      await aposGravar(resource.name, resource.exclusaoLogica ? req.params.id : null, afetados);
-      // Lead excluído: as mensagens, atividades e disparos dele ficam sem dono (não somem)
-      if (resource.name === 'leads') await soltarLead(req.params.id);
-      if (contratoAfetado) await recalcularContrato(contratoAfetado);
+      await aposGravar(resource.name, resource.exclusaoLogica ? req.params.id : null);
       if (fotosAntes) await apagarFotosRemovidas(fotosAntes, []);
-      if (eventoGoogle) await apagarEventoGoogle(String(empresaDa(res)), eventoGoogle).catch((e) => console.error(`Google Agenda: ${e.message}`));
       res.json({ success: true });
     } catch (err: any) {
       res.status(err.status || 400).json({ error: friendlyDbError(err, resource?.labelSingular) });

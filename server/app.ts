@@ -18,7 +18,7 @@ import { createChamadosRouter } from './chamados.js';
 import { createNotificacoesRouter } from './notificacoes.js';
 import { createOsRouter } from './os.js';
 import { createPainelSuporteRouter } from './painelSuporte.js';
-import { lerPermissoes, mesclarPermissoes, prepararPermissoes } from './permissoes.js';
+import { lerPermissoes, prepararPermissoes } from './permissoes.js';
 import { receberAvisoEvolution, vigiarWhatsApp } from './whatsapp.js';
 import { responderComBot } from './chatbot.js';
 import { tratarRespostaPesquisa } from './pesquisa.js';
@@ -185,7 +185,7 @@ export function createApp() {
   });
 
   // Rotinas do suporte chamadas pelo cron da Vercel (vercel.json), que envia "Authorization: Bearer CRON_SECRET".
-  // Fora da Vercel elas rodam pelo setInterval do server.ts. Campanhas, automáticas, contratos e Google Agenda: só no bm-crm
+  // Fora da Vercel elas rodam pelo setInterval do server.ts.
   const cron = (tarefa: () => Promise<unknown>) => async (req: Request, res: Response) => {
     const segredo = process.env.CRON_SECRET;
     const recebido = String(req.header('authorization') || '');
@@ -268,13 +268,11 @@ export function createApp() {
     try {
       if (res.locals.usuario?.tipo !== 'admin') return res.status(403).json({ error: 'Somente administradores alteram permissões.' });
       const id = Number(req.params.id) || 0;
-      const [atual] = await pool.query<any[]>('SELECT permissoes FROM usuarios WHERE id = ? AND empresa_id = ?', [id, res.locals.empresaId]);
+      const [atual] = await pool.query<any[]>('SELECT id FROM usuarios WHERE id = ? AND empresa_id = ?', [id, res.locals.empresaId]);
       if (!atual.length) return res.status(404).json({ error: 'Usuário não encontrado.' });
       const permissoes = prepararPermissoes(req.body?.permissoes ?? null);
-      // Mesma coluna do bm-crm: as opções do CRM ficam como estavam
-      const gravar = mesclarPermissoes(permissoes, atual[0].permissoes);
       await pool.query('UPDATE usuarios SET permissoes = ? WHERE id = ? AND empresa_id = ?', [
-        gravar === null ? null : JSON.stringify(gravar),
+        permissoes === null ? null : JSON.stringify(permissoes),
         id,
         res.locals.empresaId,
       ]);

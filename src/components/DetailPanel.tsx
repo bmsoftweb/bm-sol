@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Loader2, Inbox, X, ExternalLink, ChevronDown, ChevronUp, Plus, Pencil, Trash2, Lock } from 'lucide-react';
+import { Loader2, Inbox, X, ExternalLink, ChevronDown, ChevronUp, Plus, Pencil, Trash2 } from 'lucide-react';
 import { DetailDef, OpcaoRef, RegistroCrud, ResourceDef } from '../types';
 import { formatCurrencyBRL } from '../utils/formatters';
-import { listRecords, fetchOptions, createRecord, updateRecord, deleteRecord, invalidateOptions, travaContrato } from '../services/api';
+import { listRecords, fetchOptions, createRecord, updateRecord, deleteRecord, invalidateOptions } from '../services/api';
 import { CellValue } from './CellValue';
 import { AvisoErro } from './AvisoErro';
 import { RecordForm } from './RecordForm';
@@ -86,20 +86,6 @@ export const DetailPanel: React.FC<DetailPanelProps> = ({
     setActiveDetail(0);
   }, [parentId]);
 
-  /** Contrato assinado e travado: os itens só mudam por aditivo */
-  const [paiTravado, setPaiTravado] = useState(false);
-  useEffect(() => {
-    setPaiTravado(false);
-    if (parent.name !== 'contratos' || !parentId) return;
-    let vivo = true;
-    travaContrato(parentId)
-      .then((t) => vivo && setPaiTravado(t.travado))
-      .catch(() => {});
-    return () => {
-      vivo = false;
-    };
-  }, [parent.name, parentId, refreshToken]);
-
   // Combos de chave estrangeira do recurso filho
   useEffect(() => {
     let alive = true;
@@ -181,7 +167,7 @@ export const DetailPanel: React.FC<DetailPanelProps> = ({
 
   if (!childResource || !detail) return null;
 
-  const editavel = Boolean(detail.editavel) && !paiTravado;
+  const editavel = Boolean(detail.editavel);
   const podeEditar = editavel && childResource.canUpdate;
   const podeExcluir = editavel && childResource.canDelete;
   const pkFilho = (r: RegistroCrud) => r[childResource.pk[0]] as string | number;
@@ -226,15 +212,6 @@ export const DetailPanel: React.FC<DetailPanelProps> = ({
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          {paiTravado && (
-            <span
-              title="Contrato assinado: os itens só mudam por aditivo (Documentos › Liberar para aditivo)"
-              className="flex items-center gap-1 text-[11px] font-semibold text-stone-500 dark:text-stone-400"
-            >
-              <Lock className="w-3.5 h-3.5" />
-              Travado
-            </span>
-          )}
           {editavel && childResource.canCreate && (
             <button
               onClick={() => setEditando({ record: null })}

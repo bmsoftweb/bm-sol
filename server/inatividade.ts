@@ -11,7 +11,7 @@ import { marcarEvento, minutosInatividade, mudarAtendimento, type ConfigChatbot 
  * Roda no cron do WhatsApp (Vercel) e no setInterval local, com trava no MySQL (os dois usam o mesmo banco).
  */
 
-/** Linhas de encerramentos antigos (antes de o app deixar de encerrar sozinho): a Automação das campanhas ainda as reconhece */
+/** Linhas de encerramentos antigos (antes de o app deixar de encerrar sozinho) */
 export const TEXTO_ENCERRAMENTO = 'Atendimento encerrado por falta de interação do cliente';
 /** Mensagem mais velha que o prazo + esta janela não entra (servidor parado, conversa antiga) */
 const JANELA_MIN = 60;

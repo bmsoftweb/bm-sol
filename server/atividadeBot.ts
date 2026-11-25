@@ -4,11 +4,11 @@ import { enviarEmail } from './email.js';
 import { aposGravar } from './regras.js';
 import { TIPOS_ATIVIDADE } from './schema.js';
 import { conversarIa, explicarErro, lerChatbot, marcarEncerramento, marcarEvento, mudarAtendimento, temChave, type ConfigChatbot, type FalaIa, type FerramentaIa } from './chatbot.js';
-import { contaWhats, enviarAutomatica, enviarReservada, mostrarDigitando, reservarEnvio, telefoneWhatsApp, type MensagemNova } from './whatsapp.js';
+import { enviarAutomatica, enviarReservada, mostrarDigitando, reservarEnvio, telefoneWhatsApp, type MensagemNova } from './whatsapp.js';
 
 /**
  * Bot das atividades ("Quem executa = Bot"). No dia e hora da atividade, o CRM contata quem está em "Lembrete para"
- * (cliente, vendedor, os dois ou todos os envolvidos): pelo WhatsApp, a IA conversa seguindo o assunto e a
+ * (cliente, responsável, os dois ou todos os envolvidos): pelo WhatsApp, a IA conversa seguindo o assunto e a
  * observação da atividade até cumprir o objetivo; sem WhatsApp, vai uma mensagem única por e-mail (o CRM não lê
  * e-mails). Cada destinatário é uma conversa (atividade_conversas) com as mensagens em atividade_mensagens.
  * - Resposta da pessoa: chega pelo webhook (responderComBot chama responderAtividade antes da Automação).
@@ -55,21 +55,15 @@ interface Destinatario {
   email: string | null;
 }
 
-/** A atividade com o que o bot precisa: vínculos, empresa e responsável (vendedor do negócio/contrato ou atendente do chamado) */
+/** A atividade com o que o bot precisa: vínculos, empresa e responsável (o atendente do chamado) */
 async function lerAtividade(id: number) {
   const [r] = await pool.query<any[]>(
     `SELECT a.*, DATE_FORMAT(a.data_vencimento, '%d/%m/%Y') AS data, TIME_FORMAT(a.hora_vencimento, '%H:%i') AS hora,
             e.nome AS empresa_nome, p.nome AS pessoa_nome, COALESCE(NULLIF(p.whatsapp, ''), p.telefone) AS pessoa_telefone, p.email AS pessoa_email,
-            n.titulo AS negocio_titulo, ct.numero AS contrato_numero, ct.titulo AS contrato_titulo, ch.numero AS chamado_numero, ch.titulo AS chamado_titulo,
-            COALESCE(n.proprietario_id, ct.proprietario_id, ch.atendente_id) AS responsavel_id,
-            -- Pesquisa de satisfação: a conversa sai pelo WhatsApp escolhido nela
-            (SELECT ps.conta FROM pesquisas_satisfacao_itens i JOIN pesquisas_satisfacao ps ON ps.id = i.pesquisa_id
-              WHERE i.atividade_id = a.id LIMIT 1) AS conta_pesquisa
+            ch.numero AS chamado_numero, ch.titulo AS chamado_titulo, ch.atendente_id AS responsavel_id
        FROM atividades a
        JOIN empresas e ON e.id = a.empresa_id
        LEFT JOIN pessoas p ON p.id = a.pessoa_id
-       LEFT JOIN negocios n ON n.id = a.negocio_id
-       LEFT JOIN contratos ct ON ct.id = a.contrato_id
        LEFT JOIN chamados ch ON ch.id = a.chamado_id
       WHERE a.id = ?`,
     [id],
@@ -103,8 +97,6 @@ const hojeBrasilia = () => new Intl.DateTimeFormat('pt-BR', { timeZone: 'America
 function instrucoes(cfg: ConfigChatbot, a: any, conv: { nome: string | null; pessoa_id: number | null; canal: string }): string {
   const vinculos = [
     a.pessoa_nome && `Cliente: ${a.pessoa_nome}`,
-    a.negocio_titulo && `Negócio: ${a.negocio_titulo}`,
-    a.contrato_numero && `Contrato nº ${a.contrato_numero}: ${a.contrato_titulo ?? ''}`,
     a.chamado_numero && `Chamado de suporte nº ${a.chamado_numero}: ${a.chamado_titulo ?? ''}`,
   ].filter(Boolean);
   const quem = `${conv.nome ?? 'a pessoa'}, ${conv.pessoa_id ? 'cliente da empresa' : 'pessoa da equipe da empresa'}`;
@@ -150,15 +142,14 @@ async function gravarMensagem(conversaId: number, direcao: 'enviada' | 'recebida
 /**
  * Manda a mensagem do bot pelo WhatsApp com origem própria: não conta como resposta de atendente (a conversa não
  * passa a ser "humano") e aparece na tela do WhatsApp. O número fica como o WhatsApp o conhece (às vezes sem o 9),
- * que é como a resposta da pessoa chega. Sai pelo WhatsApp principal; a pesquisa de satisfação, pelo escolhido nela
- * (o das campanhas sem configuração cai no principal)
+ * que é como a resposta da pessoa chega.
  */
 async function enviarNaConversa(a: any, conv: any, texto: string) {
   const empresaId = a.empresa_id;
   const origem = `atividade-bot:${conv.id}:${Date.now()}`;
   const id = await reservarEnvio(empresaId, origem, { pessoa_id: conv.pessoa_id, contato_id: null }, conv.destino, texto);
   if (!id) return;
-  await enviarReservada(empresaId, id, origem, conv.destino, texto, undefined, (await lerChatbot(empresaId))?.nome || 'Assistente', contaWhats(a.conta_pesquisa));
+  await enviarReservada(empresaId, id, origem, conv.destino, texto, undefined, (await lerChatbot(empresaId))?.nome || 'Assistente');
   const [w] = await pool.query<any[]>('SELECT telefone, situacao, erro FROM whatsapp_mensagens WHERE id = ?', [id]);
   if (w[0]?.situacao === 'falhou') throw new Error(`WhatsApp recusou a mensagem: ${w[0].erro ?? ''}`);
   if (w[0]?.telefone && w[0].telefone !== conv.destino) {

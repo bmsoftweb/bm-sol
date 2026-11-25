@@ -58,8 +58,8 @@ export function podeExcluirAtividade(row: RegistroCrud, usuario: { id: string; t
 /** Para quem vai o lembrete automático da atividade (o mesmo de server/schema.ts) */
 export const LEMBRETE_PARA = [
   { value: 'cliente', label: 'Cliente' },
-  { value: 'vendedor', label: 'Vendedor' },
-  { value: 'ambos', label: 'Cliente e vendedor' },
+  { value: 'vendedor', label: 'Responsável' },
+  { value: 'ambos', label: 'Cliente e responsável' },
   { value: 'todos', label: 'Todos os envolvidos' },
   { value: 'nenhum', label: 'Ninguém' },
 ];

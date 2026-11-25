@@ -1217,7 +1217,7 @@ export const CrudView: React.FC<CrudViewProps> = ({
           )}
 
           {acoesLista?.(() => {
-            // A ação pode ter criado registros referenciados (a importação cria segmentos):
+            // A ação pode ter criado registros referenciados:
             // descarta o cache dos combos para a lista não mostrar "…" no lugar do nome
             invalidateOptions();
             setVersaoCombos((v) => v + 1);

@@ -34,16 +34,9 @@ pool.pool.on('connection', (conn: any) => {
 export const DB_TABLES = [
   'empresas',
   'pessoas',
-  'funis',
-  'etapas',
-  'negocios',
   'atividades',
-  'historico_interacoes',
-  'produtos',
-  'propostas',
-  'proposta_itens',
-  'pedidos',
-  'pedido_itens',
+  'chamados',
+  'whatsapp_mensagens',
   'usuarios',
 ];
 

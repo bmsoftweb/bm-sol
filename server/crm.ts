@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { pool } from './db.js';
 import { friendlyDbError } from './crud.js';
 
-/** Rotas que sobraram do CRM no bm-sol: o aviso das atividades novas e os funis do nó Registrar Prospecção da Automação */
+/** Aviso das atividades novas e busca de produtos do Encerrar OS */
 export function createCrmRouter() {
   const router = Router();
 
@@ -25,16 +25,17 @@ export function createCrmRouter() {
     }
   });
 
-  // Funis e etapas (só leitura): o nó "Registrar Prospecção" da Automação do WhatsApp escolhe onde o negócio entra
-  router.get('/crm/funis', async (_req: Request, res: Response) => {
+  // Produtos ativos para a busca do Encerrar OS
+  router.get('/crm/produtos', async (req: Request, res: Response) => {
     try {
-      const emp = String(res.locals.empresaId);
-      const [funis] = await pool.query<any[]>('SELECT id, nome FROM funis WHERE ativo = 1 AND empresa_id = ? ORDER BY ordem, nome', [emp]);
-      const [etapas] = await pool.query<any[]>(
-        'SELECT id, funil_id, nome, ordem, probabilidade, cor FROM etapas WHERE funil_id IN (SELECT id FROM funis WHERE empresa_id = ?) ORDER BY ordem, nome',
-        [emp],
+      const q = `%${String(req.query.q || '').trim()}%`;
+      const [rows] = await pool.query<any[]>(
+        `SELECT id, codigo_sku, nome, preco_tabela, unidade_medida FROM produtos
+          WHERE ativo = 1 AND empresa_id = ? AND (nome LIKE ? OR codigo_sku LIKE ? OR descricao LIKE ?)
+          ORDER BY nome LIMIT 20`,
+        [String(res.locals.empresaId), q, q, q],
       );
-      res.json(funis.map((f) => ({ ...f, etapas: etapas.filter((e) => e.funil_id === f.id) })));
+      res.json(rows.map((r) => ({ ...r, preco_tabela: Number(r.preco_tabela) })));
     } catch (err: any) {
       res.status(err.status || 400).json({ error: friendlyDbError(err) });
     }

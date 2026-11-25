@@ -297,8 +297,6 @@ export const AgendaCalendario: React.FC<Props> = ({
       ? 'bg-stone-100 text-stone-500 border-stone-300 line-through dark:bg-stone-800 dark:text-stone-400 dark:border-stone-700'
       : String(r.data_vencimento).slice(0, 10) < hoje
       ? 'bg-rose-50 text-rose-800 border-rose-300 dark:bg-rose-950/50 dark:text-rose-200 dark:border-rose-800'
-      : r.origem === 'google'
-      ? 'bg-purple-50 text-purple-800 border-purple-300 dark:bg-purple-950/50 dark:text-purple-200 dark:border-purple-800'
       : 'bg-blue-50 text-blue-800 border-blue-300 dark:bg-blue-950/50 dark:text-blue-200 dark:border-blue-800';
 
   /** Assunto como a lista mostra (com quem executa na frente: "Luis : Implementar...") */

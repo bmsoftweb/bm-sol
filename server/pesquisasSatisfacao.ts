@@ -5,7 +5,7 @@ import { podeAcessar } from './permissoes.js';
 import { aposGravar } from './regras.js';
 import { enviarEmail, lerRespostas } from './email.js';
 import { conversarIa, lerChatbot, marcarEvento, temChave } from './chatbot.js';
-import { contaWhats, PESSOA_RECENTE } from './whatsapp.js';
+import { PESSOA_RECENTE } from './whatsapp.js';
 
 /**
  * Pesquisa de satisfação (Suporte › Pesquisa de Satisfação; tabelas pesquisas_satisfacao e pesquisas_satisfacao_itens).
@@ -54,7 +54,6 @@ export interface FiltroPesquisa {
   notas?: number[];
   /** Com as notas marcadas: também os atendimentos sem avaliação */
   sem_nota?: boolean;
-  segmentos?: number[];
   pessoas?: number[];
   atendentes?: number[];
   departamentos?: number[];
@@ -74,7 +73,6 @@ export function normalizarFiltro(f: any): FiltroPesquisa {
     origens: (Array.isArray(f?.origens) ? f.origens : []).filter((o: string) => o === 'chamado' || o === 'whatsapp'),
     notas: ids(f?.notas).filter((n) => n <= 5),
     sem_nota: Boolean(f?.sem_nota),
-    segmentos: ids(f?.segmentos),
     pessoas: ids(f?.pessoas),
     atendentes: ids(f?.atendentes),
     departamentos: ids(f?.departamentos),
@@ -104,7 +102,6 @@ function atendimentosFiltrados(empresaId: number, pesquisaId: number, f: FiltroP
   if (f.data_ate) (onde.push('u.data_atendimento <= ?'), params.push(`${f.data_ate} 23:59:59`));
   if (f.origens?.length) (onde.push('u.origem IN (?)'), params.push(f.origens));
   if (f.notas?.length) (onde.push(`(u.nota IN (?)${f.sem_nota ? ' OR u.nota IS NULL' : ''})`), params.push(f.notas));
-  if (f.segmentos?.length) (onde.push('p.segmento_id IN (?)'), params.push(f.segmentos));
   if (f.pessoas?.length) (onde.push('u.pessoa_id IN (?)'), params.push(f.pessoas));
   if (f.atendentes?.length) (onde.push('u.atendente_id IN (?)'), params.push(f.atendentes));
   if (f.departamentos?.length) (onde.push('u.departamento_id IN (?)'), params.push(f.departamentos));
@@ -514,8 +511,6 @@ export function createPesquisasSatisfacaoRouter(): Router {
       descricao,
       objetivo: String(b?.objetivo ?? '').trim().slice(0, 4000) || null,
       canal,
-      // WhatsApp por onde o Bot conversa (server/atividadeBot.ts)
-      conta: contaWhats(b?.conta),
       filtro: JSON.stringify(normalizarFiltro(b?.filtro)),
       quantidade,
       responsavel_id: Number(b?.responsavel_id) || null,
@@ -525,8 +520,8 @@ export function createPesquisasSatisfacaoRouter(): Router {
   router.post('/pesquisas-satisfacao', rota(async (req, res) => {
     const d = dadosDaTela(req.body);
     const [r] = await pool.query<any>(
-      'INSERT INTO pesquisas_satisfacao (empresa_id, descricao, objetivo, canal, conta, filtro, quantidade, responsavel_id, criado_por) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [emp(res), d.descricao, d.objetivo, d.canal, d.conta, d.filtro, d.quantidade, d.responsavel_id, eu(res)],
+      'INSERT INTO pesquisas_satisfacao (empresa_id, descricao, objetivo, canal, filtro, quantidade, responsavel_id, criado_por) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [emp(res), d.descricao, d.objetivo, d.canal, d.filtro, d.quantidade, d.responsavel_id, eu(res)],
     );
     res.json({ id: Number(r.insertId) });
   }));
@@ -536,19 +531,16 @@ export function createPesquisasSatisfacaoRouter(): Router {
     const d = dadosDaTela(req.body);
     // Já executada: o canal não muda (os contatos saíram por ele)
     if (p.situacao !== 'rascunho' && d.canal !== p.canal) throw erro(400, 'A pesquisa já foi executada: o tipo de contato não pode mudar.');
-    // Nem o número: as conversas já começaram por ele
-    if (p.situacao !== 'rascunho') d.conta = contaWhats(p.conta);
     // Já sorteada: o filtro e a quantidade ficam como no primeiro sorteio ("Sortear +x" usa o mesmo filtro)
     const [[{ sorteada }]] = await pool.query<any>('SELECT EXISTS (SELECT 1 FROM pesquisas_satisfacao_itens WHERE pesquisa_id = ?) AS sorteada', [p.id]);
     if (Number(sorteada)) {
       d.filtro = JSON.stringify(p.filtro);
       d.quantidade = p.quantidade;
     }
-    await pool.query('UPDATE pesquisas_satisfacao SET descricao = ?, objetivo = ?, canal = ?, conta = ?, filtro = ?, quantidade = ?, responsavel_id = ? WHERE id = ?', [
+    await pool.query('UPDATE pesquisas_satisfacao SET descricao = ?, objetivo = ?, canal = ?, filtro = ?, quantidade = ?, responsavel_id = ? WHERE id = ?', [
       d.descricao,
       d.objetivo,
       d.canal,
-      d.conta,
       d.filtro,
       d.quantidade,
       d.responsavel_id,
@@ -649,7 +641,7 @@ export function createPesquisasSatisfacaoRouter(): Router {
     // A atividade da ligação fica concluída
     if (it.atividade_id) {
       await pool.query('UPDATE atividades SET concluida = 1 WHERE id = ?', [it.atividade_id]);
-      await aposGravar('atividades', String(it.atividade_id), [], pool, eu(res));
+      await aposGravar('atividades', String(it.atividade_id), pool, eu(res));
     }
     res.json({ success: true });
   }));

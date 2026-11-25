@@ -33,7 +33,7 @@ async function startServer() {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`BM-SOL rodando em http://0.0.0.0:${PORT}`);
     console.log(`MySQL: ${process.env.MYSQL_HOST} / ${process.env.MYSQL_DATABASE || 'bmsol'}`);
-    // Rotinas do suporte (campanhas, automáticas, contratos e Google Agenda ficam no bm-crm)
+    // Rotinas do suporte
     iniciarJornadas();
     iniciarInatividade();
     iniciarBotAtividades();

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { SelectAuto } from './SelectAuto';
 import { useGrudarNoFim } from '../utils/grudarNoFim';
-import { AlertCircle, ArrowLeft, ArrowRightLeft, Bot, Building2, CircleCheck, CircleSlash, Hand, Headset, Inbox, Layers, Lock, LockOpen, Megaphone, Network, Pause, Check, CheckCheck, Clock, FileText, Hash, Loader2, MessageCircle, MessageSquarePlus, Mic, Paperclip, Play, Reply, Search, SendHorizontal, Trash2, User, UserPlus, X } from 'lucide-react';
+import { AlertCircle, ArrowLeft, ArrowRightLeft, Bot, Building2, CircleCheck, CircleSlash, Hand, Headset, Inbox, Layers, Lock, LockOpen, Network, Pause, Check, CheckCheck, Clock, FileText, Hash, Loader2, MessageCircle, MessageSquarePlus, Mic, Paperclip, Play, Reply, Search, SendHorizontal, Trash2, User, UserPlus, X } from 'lucide-react';
 import { ArquivoConversa, ConversaResumo, DestinoConversa, MensagemWhatsApp, createRecord, fetchDestinosConversa, fetchMidiaMensagem, fetchNumeroConversa, mudarAtendimentoConversa, encerrarConversa, descartarConversa, limparConversa, atenderConversa, marcarMensagemPrivada, apagarMensagem, pausarConversa, transferirConversa, fetchConversa, fetchOptions, fetchConversaDaAtividade, fetchConversas, responderConversa } from '../services/api';
 import { INPUT_CLASS, LABEL_CLASS, FIELD_CLASS, HINT_CLASS } from '../utils/formStyles';
 import { formatDateTimeBR, hojeIso, horaChegada } from '../utils/formatters';
@@ -219,7 +219,7 @@ export const ConversasView: React.FC<Props> = ({ refreshToken, onVisto, pedido, 
   const [cadastrando, setCadastrando] = useState<{ telefone: string; nome: string } | null>(null);
   const [editandoCliente, setEditandoCliente] = useState<{
     telefone: string;
-    recurso: 'pessoas' | 'pessoas_contatos' | 'leads';
+    recurso: 'pessoas' | 'pessoas_contatos';
     id: number;
     nomeAtual: string;
     perfil: string | null;
@@ -230,11 +230,8 @@ export const ConversasView: React.FC<Props> = ({ refreshToken, onVisto, pedido, 
   const [anexo, setAnexo] = useState<(ArquivoConversa & { tamanho: number }) | null>(null);
   /** Responder: a mensagem escolhida vai citada na próxima enviada (como no WhatsApp) */
   const [respondendo, setRespondendo] = useState<MensagemWhatsApp | null>(null);
-  /** Número que envia, escolhido na tela; null = por onde o cliente escreveu por último */
-  const [saiPor, setSaiPor] = useState<'provedor' | 'campanhas' | null>(null);
   useEffect(() => {
     setRespondendo(null);
-    setSaiPor(null);
   }, [aberta]);
   /** Segundos de gravação do áudio em andamento; null = não está gravando */
   const [gravando, setGravando] = useState<number | null>(null);
@@ -249,11 +246,11 @@ export const ConversasView: React.FC<Props> = ({ refreshToken, onVisto, pedido, 
   const [erro, setErro] = useState<string | null>(null);
   /** Só as que eu atendo e as que aguardam (sem departamento ou no meu departamento) */
   const [minhas, setMinhas] = useState(false);
-  /** Filtro da lista pelo estado do atendimento ('' = todas; vírgula = mais de um estado; campanhas = só as do número das campanhas) */
-  const [filtroEstado, setFiltroEstado] = useState<'' | 'aguardando' | 'atendimento' | 'aguardando,atendimento' | 'encerrado' | 'campanhas'>('aguardando,atendimento');
-  // A conversa aberta (ex.: vinda do negócio ou da atividade) fica na lista mesmo fora do filtro
+  /** Filtro da lista pelo estado do atendimento ('' = todas; vírgula = mais de um estado) */
+  const [filtroEstado, setFiltroEstado] = useState<'' | 'aguardando' | 'atendimento' | 'aguardando,atendimento' | 'encerrado'>('aguardando,atendimento');
+  // A conversa aberta (ex.: vinda da atividade) fica na lista mesmo fora do filtro
   const visiveis = filtroEstado
-    ? conversas?.filter((c) => c.telefone === aberta || (filtroEstado === 'campanhas' ? c.conta === 'campanhas' : filtroEstado.split(',').includes(c.estado ?? '')))
+    ? conversas?.filter((c) => c.telefone === aberta || filtroEstado.split(',').includes(c.estado ?? ''))
     : conversas;
   /** Transferir: destino escolhido ("u:ID" atendente, "d:ID" departamento); null = janela fechada */
   const [transferir, setTransferir] = useState<string | null>(null);
@@ -391,7 +388,7 @@ export const ConversasView: React.FC<Props> = ({ refreshToken, onVisto, pedido, 
     setEnviando(true);
     try {
       const vinculada = atividade?.telefone === aberta ? atividade : null;
-      const r = await responderConversa(aberta, t, vinculada?.id, arquivo, respondendo?.id, conversa?.tem_campanhas ? numeroEnvio : 'provedor');
+      const r = await responderConversa(aberta, t, vinculada?.id, arquivo, respondendo?.id);
       setRespondendo(null);
       if (!audio) setTexto('');
       if (arquivo === anexo) setAnexo(null);
@@ -471,7 +468,6 @@ export const ConversasView: React.FC<Props> = ({ refreshToken, onVisto, pedido, 
   const resumoAberta = conversas?.find((c) => c.telefone === aberta);
   const nomeAberta =
     conversa?.pessoa?.nome ||
-    conversa?.lead?.nome ||
     resumoAberta?.nome ||
     (atividade?.telefone === aberta ? nomePedido : null) ||
     (escolhido?.telefone === aberta ? escolhido.nome : null);
@@ -504,11 +500,6 @@ export const ConversasView: React.FC<Props> = ({ refreshToken, onVisto, pedido, 
   const linhas = Math.min(5, texto.split('\n').length);
   /** Em atendimento com outro usuário: só vê (administrador também); fecha pelo X da aba */
   const travada = conversa?.estado === 'atendimento' && !conversa.eu_atendo;
-  // Última mensagem da conversa foi uma campanha (o cliente ainda não respondeu): o padrão é o número das campanhas,
-  // o mesmo chat em que ele recebeu; senão, o número por onde ele escreveu
-  const ultimaMsg = conversa?.mensagens.filter((m) => m.tipo !== 'evento' && m.tipo !== 'encerramento').at(-1);
-  const numeroPadrao = ultimaMsg?.campanha ? 'campanhas' : (conversa?.conta ?? 'provedor');
-  const numeroEnvio = saiPor ?? numeroPadrao;
   const podeMexer = Boolean(conversa) && !travada;
   /** Pode transferir: só quem está atendendo */
   const podeTransferir = conversa?.estado === 'atendimento' && conversa.eu_atendo;
@@ -639,7 +630,6 @@ export const ConversasView: React.FC<Props> = ({ refreshToken, onVisto, pedido, 
               ['aguardando', 'Aguardando', Clock],
               ['atendimento', 'Em atendimento', Headset],
               ['encerrado', 'Encerradas', CircleCheck],
-              ['campanhas', 'Só Campanhas (WhatsApp das campanhas)', Megaphone],
             ] as const
           ).map(([valor, nome, Icone]) => (
             <button
@@ -686,14 +676,12 @@ export const ConversasView: React.FC<Props> = ({ refreshToken, onVisto, pedido, 
                       role="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        // O número é do contato (o cadastro dele), senão da pessoa, senão do lead
+                        // O número é do contato (o cadastro dele), senão da pessoa
                         const alvo = c.contato_id
                           ? { recurso: 'pessoas_contatos' as const, id: c.contato_id }
                           : c.pessoa_id
                             ? { recurso: 'pessoas' as const, id: c.pessoa_id }
-                            : c.lead_id
-                              ? { recurso: 'leads' as const, id: c.lead_id }
-                              : null;
+                            : null;
                         if (alvo)
                           setEditandoCliente({ telefone: c.telefone, ...alvo, nomeAtual: c.contato_nome ? `${c.contato_nome} (${c.nome})` : (c.nome as string), perfil: c.nome_contato });
                       }}
@@ -759,14 +747,6 @@ export const ConversasView: React.FC<Props> = ({ refreshToken, onVisto, pedido, 
                           className="shrink-0 text-[10px] font-semibold px-1.5 rounded bg-orange-50 text-orange-700 dark:bg-orange-950/40 dark:text-orange-300"
                         >
                           Pausado
-                        </span>
-                      )}
-                      {c.conta === 'campanhas' && (
-                        <span
-                          title="Entrou pelo WhatsApp das campanhas: as respostas saem por esse número"
-                          className="shrink-0 text-[10px] font-semibold px-1.5 rounded bg-fuchsia-50 text-fuchsia-700 dark:bg-fuchsia-950/40 dark:text-fuchsia-300"
-                        >
-                          WhatsApp Campanha
                         </span>
                       )}
                       {c.estado === 'encerrado' && (
@@ -873,7 +853,6 @@ export const ConversasView: React.FC<Props> = ({ refreshToken, onVisto, pedido, 
                   {!nomeAberta && (
                     <span className="italic text-amber-600 dark:text-amber-400">{perfilAberta ? ' · ' : ''}não cadastrado</span>
                   )}
-                  {conversa?.lead && <span className="italic text-amber-600 dark:text-amber-400"> · lead</span>}
                 </div>
               </div>
               {conversa?.departamento && (
@@ -1001,7 +980,7 @@ export const ConversasView: React.FC<Props> = ({ refreshToken, onVisto, pedido, 
               {conversa && !nomeAberta && (
                 <button
                   onClick={() => setCadastrando({ telefone: aberta, nome: perfilAberta || '' })}
-                  title="Cadastrar este número como lead ou como contato de uma pessoa"
+                  title="Cadastrar este número como cliente ou como contato de um cliente"
                   className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-900 hover:bg-blue-50 dark:hover:bg-blue-950/40 cursor-pointer"
                 >
                   <UserPlus className="w-4 h-4" />
@@ -1025,7 +1004,7 @@ export const ConversasView: React.FC<Props> = ({ refreshToken, onVisto, pedido, 
                     </div>
                     {mensagens.map((m) => {
                       const minha = m.direcao === 'enviada';
-                      const origem = minha ? (m.bot ? (conversa.bot_nome ? `${conversa.bot_nome} (bot)` : 'Bot') : m.campanha ? 'Campanha' : m.automatica ? 'Automática' : m.usuario_nome) : null;
+                      const origem = minha ? (m.bot ? (conversa.bot_nome ? `${conversa.bot_nome} (bot)` : 'Bot') : m.automatica ? 'Automática' : m.usuario_nome) : null;
                       // Evento do atendimento (começou, transferiu, liberado pelo tempo): linha discreta
                       if (m.tipo === 'evento') {
                         // Falha da automação (server/chatbot.ts, avisarFalha): em vermelho, para o técnico ver
@@ -1194,26 +1173,6 @@ export const ConversasView: React.FC<Props> = ({ refreshToken, onVisto, pedido, 
             {conversa && conversa.estado !== 'atendimento' && (
               <div className="shrink-0 px-3 pt-2 text-[11px] text-stone-500 dark:text-stone-400">
                 Ao responder, você passa a atender esta conversa (o bot para e só você responde).
-              </div>
-            )}
-            {conversa?.tem_campanhas && (
-              <div className="shrink-0 px-3 py-2 flex flex-wrap items-center gap-2 text-[11px] text-stone-500 dark:text-stone-400">
-                <label htmlFor="cv-sai-por" className="font-semibold">Sai pelo</label>
-                <SelectAuto
-                  id="cv-sai-por"
-                  value={numeroEnvio}
-                  onChange={(e) => setSaiPor(e.target.value as 'provedor' | 'campanhas')}
-                  title="Número do WhatsApp por onde a mensagem sai"
-                  className="h-6 px-1.5 rounded border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-900 text-[11px] text-stone-700 dark:text-stone-200 cursor-pointer"
-                >
-                  <option value="provedor">WhatsApp principal</option>
-                  <option value="campanhas">WhatsApp das campanhas</option>
-                </SelectAuto>
-                {numeroEnvio !== numeroPadrao && (
-                  <span className="text-amber-700 dark:text-amber-400">
-                    {ultimaMsg?.campanha ? 'A campanha chegou' : 'O cliente escreveu'} pelo {numeroPadrao === 'campanhas' ? 'número das campanhas' : 'número principal'}: no celular dele, esta mensagem cai em outro chat.
-                  </span>
-                )}
               </div>
             )}
             {respondendo && (
@@ -1581,14 +1540,14 @@ const NovaConversa: React.FC<{ onFechar: () => void; onEscolher: (d: DestinoConv
   );
 };
 
-/** Cadastro rápido em Pessoas (lead) de quem mandou mensagem e ainda não está cadastrado */
+/** Cadastro rápido em Pessoas de quem mandou mensagem e ainda não está cadastrado */
 const CadastroRapido: React.FC<{ telefone: string; nome: string; onFechar: () => void; onCadastrado: () => void }> = ({
   telefone,
   nome: nomeInicial,
   onFechar,
   onCadastrado,
 }) => {
-  /** Novo lead (Marketing › Leads) ou contato de uma pessoa que já existe */
+  /** Novo cliente ou contato de uma pessoa que já existe */
   const [modo, setModo] = useState<'pessoa' | 'contato'>('pessoa');
   const [nome, setNome] = useState(nomeInicial);
   const [fone, setFone] = useState(telefoneCadastro(telefone));
@@ -1614,7 +1573,7 @@ const CadastroRapido: React.FC<{ telefone: string; nome: string; onFechar: () =>
     setErro(null);
     try {
       if (modo === 'pessoa') {
-        await createRecord('leads', { origem: 'whatsapp', nome: nome.trim(), whatsapp: fone.trim(), email: email.trim() || null });
+        await createRecord('pessoas', { nome: nome.trim(), whatsapp: fone.trim(), email: email.trim() || null, ativo: true });
       } else {
         if (!pessoaId) throw new Error('Escolha a pessoa (empresa-cliente) do contato.');
         await createRecord('pessoas_contatos', {
@@ -1642,7 +1601,7 @@ const CadastroRapido: React.FC<{ telefone: string; nome: string; onFechar: () =>
           <div className="min-w-0">
             <h3 className="text-base font-bold text-stone-900 dark:text-stone-100">Cadastrar este número</h3>
             <p className="text-[11px] text-stone-500 dark:text-stone-400">
-              {modo === 'pessoa' ? 'Novo lead (Marketing › Leads); vira pessoa quando for convertido em cliente.' : 'Contato de uma pessoa que já está cadastrada (ex.: o comprador de um cliente).'}
+              {modo === 'pessoa' ? 'Novo cliente em Pessoas.' : 'Contato de uma pessoa que já está cadastrada (ex.: o comprador de um cliente).'}
             </p>
           </div>
           <button type="button" onClick={onFechar} title="Fechar" className="p-1.5 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-100 dark:hover:bg-stone-800 cursor-pointer">
@@ -1653,7 +1612,7 @@ const CadastroRapido: React.FC<{ telefone: string; nome: string; onFechar: () =>
           <div className="grid grid-cols-2 gap-1.5 p-1 rounded-lg bg-stone-100 dark:bg-stone-800">
             {(
               [
-                ['pessoa', 'Novo lead'],
+                ['pessoa', 'Novo cliente'],
                 ['contato', 'Contato de uma pessoa'],
               ] as const
             ).map(([v, rotulo]) => (

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { SelectAuto } from './SelectAuto';
 import { Loader2, PlugZap, QrCode, Save, Smartphone, Unplug, Webhook, X } from 'lucide-react';
-import { ativarRecebimentoWhatsApp, conectarWhatsApp, ContaWhats, desconectarWhatsApp, fetchConfig, salvarConfig, testarWhatsApp } from '../services/api';
+import { ativarRecebimentoWhatsApp, conectarWhatsApp, desconectarWhatsApp, fetchConfig, salvarConfig, testarWhatsApp } from '../services/api';
 import { INPUT_CLASS, LABEL_CLASS, FIELD_CLASS, HINT_CLASS } from '../utils/formStyles';
 import { NumberField } from './NumberField';
 import { AvisoErro } from './AvisoErro';
@@ -23,20 +23,15 @@ const VAZIO: Whats = { provedor: '', url: '', instancia: '', intervalo: '5', tok
 interface Props {
   somenteLeitura: boolean;
   onToast: (msg: string) => void;
-  /** provedor = WhatsApp padrão (atendimento, propostas); campanhas = outro número só para as campanhas */
-  conta?: ContaWhats;
 }
 
 /**
- * Configurações › WhatsApp: provedor usado no atendimento e no envio de propostas (conta padrão) ou, na conta
- * "campanhas", o número só das campanhas (sem ele, as campanhas saem pelo padrão).
+ * Configurações › WhatsApp: provedor usado no atendimento.
  * Os tokens são gravados cifrados no servidor e nunca voltam para a tela: só se sabe se existem.
  */
-export const ConfigWhatsApp: React.FC<Props> = ({ somenteLeitura, onToast, conta: contaProp }) => {
-  const conta: ContaWhats = contaProp ?? 'provedor';
-  const campanhas = conta === 'campanhas';
-  /** Ids dos campos: as duas contas ficam na mesma tela */
-  const idc = (nome: string) => `wa-${conta}-${nome}`;
+export const ConfigWhatsApp: React.FC<Props> = ({ somenteLeitura, onToast }) => {
+  const conta = 'provedor';
+  const idc = (nome: string) => `wa-${nome}`;
   const [v, setV] = useState<Whats | null>(null);
   const [definidos, setDefinidos] = useState({ token: false, client: false, provedor: '' });
   const [ocupado, setOcupado] = useState<'salvar' | 'testar' | 'receber' | null>(null);
@@ -52,7 +47,7 @@ export const ConfigWhatsApp: React.FC<Props> = ({ somenteLeitura, onToast, conta
   const [recebimento, setRecebimento] = useState<{ origem: string; em: string } | null>(null);
 
   const consultarSituacao = () =>
-    testarWhatsApp(conta)
+    testarWhatsApp()
       .then((r) => {
         setConectado(r.conectado);
         setNumero(r.numero);
@@ -81,7 +76,7 @@ export const ConfigWhatsApp: React.FC<Props> = ({ somenteLeitura, onToast, conta
     const ciclo = async () => {
       try {
         const agora = Date.now();
-        const r = agora >= proximoQr ? await conectarWhatsApp(conta) : await testarWhatsApp(conta);
+        const r = agora >= proximoQr ? await conectarWhatsApp() : await testarWhatsApp();
         if (!vivo) return;
         if (r.conectado) {
           setQrcode(null);
@@ -137,10 +132,8 @@ export const ConfigWhatsApp: React.FC<Props> = ({ somenteLeitura, onToast, conta
         .catch(() => {});
       onToast(
         ativo
-          ? `Configuração do WhatsApp${campanhas ? ' das campanhas' : ''} gravada.`
-          : campanhas
-            ? 'WhatsApp das campanhas removido: as campanhas voltam a sair pelo WhatsApp padrão.'
-            : 'Configuração do WhatsApp removida: vale a do servidor (.env).',
+          ? 'Configuração do WhatsApp gravada.'
+          : 'Configuração do WhatsApp removida: vale a do servidor (.env).',
       );
     } catch (err: any) {
       setErro(err.message);
@@ -152,7 +145,7 @@ export const ConfigWhatsApp: React.FC<Props> = ({ somenteLeitura, onToast, conta
   const testar = async () => {
     setOcupado('testar');
     try {
-      const r = await testarWhatsApp(conta);
+      const r = await testarWhatsApp();
       setConectado(r.conectado);
       setNumero(r.numero);
       onToast(r.mensagem);
@@ -166,7 +159,7 @@ export const ConfigWhatsApp: React.FC<Props> = ({ somenteLeitura, onToast, conta
   const ativarRecebimento = async () => {
     setOcupado('receber');
     try {
-      setRecebimento(await ativarRecebimentoWhatsApp(window.location.origin, conta));
+      setRecebimento(await ativarRecebimentoWhatsApp(window.location.origin));
       onToast('Recebimento de mensagens ativado na Evolution.');
     } catch (err: any) {
       setErro(err.message);
@@ -188,15 +181,10 @@ export const ConfigWhatsApp: React.FC<Props> = ({ somenteLeitura, onToast, conta
         <div className={`${FIELD_CLASS} sm:col-span-2`}>
           <label htmlFor={idc('provedor')} className={LABEL_CLASS}>Provedor</label>
           <SelectAuto id={idc('provedor')} value={v.provedor} onChange={(e) => alterar({ provedor: e.target.value as Whats['provedor'] })} className={`${campo} cursor-pointer`}>
-            <option value="">{campanhas ? '— Nenhum (as campanhas usam o WhatsApp padrão) —' : '— Nenhum (usa o .env do servidor) —'}</option>
+            <option value="">— Nenhum (usa o .env do servidor) —</option>
             <option value="evolution">Evolution API</option>
             <option value="zapi">Z-API</option>
           </SelectAuto>
-        </div>
-        <div className={FIELD_CLASS}>
-          <label htmlFor={idc('intervalo')} className={LABEL_CLASS}>Intervalo (segundos)</label>
-          <NumberField id={idc('intervalo')} value={v.intervalo} onChange={(i) => alterar({ intervalo: i })} scale={0} disabled={!ativo} className={campo} />
-          <span className={HINT_CLASS}>{campanhas ? 'Pausa entre as mensagens das campanhas' : 'Pausa entre mensagens das campanhas (sem o WhatsApp das campanhas)'}</span>
         </div>
 
         {ativo && (
@@ -245,8 +233,8 @@ export const ConfigWhatsApp: React.FC<Props> = ({ somenteLeitura, onToast, conta
             {!ehZapi && (
               <div className="sm:col-span-4 flex flex-wrap items-center gap-3 p-3 rounded-lg bg-stone-50 dark:bg-stone-950/60 border border-stone-200 dark:border-stone-800">
                 <div className="flex-1 min-w-64 text-xs text-stone-600 dark:text-stone-300">
-                  <b>Recebimento de mensagens</b>: a Evolution avisa o CRM das mensagens recebidas e da entrega e leitura das enviadas
-                  {campanhas ? ' (respostas às campanhas entram na conversa e seguem a Automação das campanhas, se ligada)' : ''}. Ative pelo endereço público do CRM
+                  <b>Recebimento de mensagens</b>: a Evolution avisa o sistema das mensagens recebidas e da entrega e leitura das enviadas.
+                  Ative pelo endereço público do sistema
                   (o da Vercel): a Evolution não alcança o computador local.
                   <div className={`mt-1 font-semibold ${recebimento ? 'text-emerald-700 dark:text-emerald-400' : 'text-stone-500'}`}>
                     {recebimento
@@ -356,15 +344,13 @@ export const ConfigWhatsApp: React.FC<Props> = ({ somenteLeitura, onToast, conta
       )}
       {desconectando && (
         <ConfirmDialog
-          titulo={campanhas ? 'Desconectar o WhatsApp das campanhas?' : 'Desconectar o WhatsApp?'}
+          titulo="Desconectar o WhatsApp?"
           mensagem={
-            campanhas
-              ? 'O número sai da instância e as campanhas deixam de ser enviadas por WhatsApp até conectar de novo pelo QR Code.'
-              : 'O número sai da instância e as propostas e campanhas deixam de ser enviadas por WhatsApp até conectar de novo pelo QR Code.'
+            'O número sai da instância e o atendimento deixa de receber e enviar por WhatsApp até conectar de novo pelo QR Code.'
           }
           confirmar="Desconectar"
           onConfirmar={async () => {
-            await desconectarWhatsApp(conta);
+            await desconectarWhatsApp();
             setDesconectando(false);
             setConectado(false);
             onToast('WhatsApp desconectado.');

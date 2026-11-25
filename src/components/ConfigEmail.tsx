@@ -29,7 +29,7 @@ interface Props {
 }
 
 /**
- * Configurações › E-mail: servidor SMTP da empresa, usado no envio de propostas; IMAP para ler as respostas da pesquisa de satisfação.
+ * Configurações › E-mail: servidor SMTP da empresa, usado nos envios de e-mail; IMAP para ler as respostas da pesquisa de satisfação.
  * A senha é gravada cifrada no servidor e nunca volta para a tela: só se sabe se existe.
  */
 export const ConfigEmail: React.FC<Props> = ({ chave = 'smtp', somenteLeitura, onToast }) => {

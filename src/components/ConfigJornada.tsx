@@ -19,8 +19,8 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { AlertTriangle, Download, ImagePlus, Loader2, Plus, Save, Upload, X } from 'lucide-react';
-import { enviarArquivoJornada, fetchArquivoJornada, fetchConfig, fetchFunis, fetchOptions, salvarConfig } from '../services/api';
-import { Funil, OpcaoRef } from '../types';
+import { enviarArquivoJornada, fetchArquivoJornada, fetchConfig, fetchOptions, salvarConfig } from '../services/api';
+import { OpcaoRef } from '../types';
 import { INPUT_CLASS, LABEL_CLASS, FIELD_CLASS, HINT_CLASS } from '../utils/formStyles';
 import {
   CORES,
@@ -48,8 +48,6 @@ type NoRF = Node<DadosNo, 'no'>;
 interface Props {
   somenteLeitura: boolean;
   onToast: (msg: string) => void;
-  /** jornada = atendimento (número padrão); jornada_campanhas = quem responde no WhatsApp das campanhas */
-  chave?: 'jornada' | 'jornada_campanhas';
 }
 
 /** Departamentos (para o resumo dos nós Departamento), sem passar pelos dados de cada nó */
@@ -190,12 +188,6 @@ async function doArquivo(arq: any, departamentos: OpcaoRef[]): Promise<{ nos: No
       if (!dep) revisar.push(`escolher o departamento${nome ? ` (no arquivo: ${nome})` : ''}`);
       delete dados.departamento_nome;
     }
-    // Funil e etapa são da outra empresa: volta para o primeiro funil até escolher
-    if (n.tipo === 'prospeccao' && dados.funil_id) {
-      dados.funil_id = null;
-      dados.etapa_id = null;
-      revisar.push(`escolher o funil e a etapa de "${dados.titulo || 'Registrar Prospecção'}"`);
-    }
     if (n.tipo === 'api' && (dados.cabecalhos ?? []).some((h: any) => h.secreto)) revisar.push(`informar os cabeçalhos secretos de "${dados.titulo || 'Chamar API'}"`);
     nos.push({ id: String(n.id), tipo: n.tipo, x: Number(n.x) || 0, y: Number(n.y) || 0, dados });
   }
@@ -215,7 +207,8 @@ interface Confirmacao {
   cancelar?: () => void;
 }
 
-const Editor: React.FC<Props> = ({ somenteLeitura, onToast, chave = 'jornada' }) => {
+const Editor: React.FC<Props> = ({ somenteLeitura, onToast }) => {
+  const chave = 'jornada';
   const [carregado, setCarregado] = useState(false);
   const [ativo, setAtivo] = useState(false);
   const [modo, setModo] = useState<'teste' | 'todos'>('teste');
@@ -333,7 +326,7 @@ const Editor: React.FC<Props> = ({ somenteLeitura, onToast, chave = 'jornada' })
       const arquivo = await paraArquivo(jornadaAtual, departamentos);
       const a = document.createElement('a');
       a.href = URL.createObjectURL(new Blob([JSON.stringify(arquivo, null, 2)], { type: 'application/json' }));
-      a.download = `automacao-${chave === 'jornada_campanhas' ? 'campanhas' : 'atendimento'}.json`;
+      a.download = 'automacao-atendimento.json';
       a.click();
       URL.revokeObjectURL(a.href);
       onToast('Automação exportada.');
@@ -587,48 +580,6 @@ interface PainelProps {
 
 const DIAS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
-/** Funil e etapa do nó Registrar Prospecção (vazios: o primeiro funil e a primeira etapa) */
-const FunilEtapa: React.FC<{ funilId: number | null; etapaId: number | null; idCampo: (c: string) => string; onChange: (m: Record<string, any>) => void }> = ({
-  funilId,
-  etapaId,
-  idCampo,
-  onChange,
-}) => {
-  const [funis, setFunis] = useState<Funil[]>([]);
-  useEffect(() => {
-    fetchFunis()
-      .then(setFunis)
-      .catch(() => {});
-  }, []);
-  const etapas = funis.find((f) => f.id === funilId)?.etapas ?? [];
-  return (
-    <>
-      <div className={FIELD_CLASS}>
-        <label htmlFor={idCampo('funil')} className={LABEL_CLASS}>Funil</label>
-        <SelectAuto id={idCampo('funil')} value={funilId ?? ''} onChange={(e) => onChange({ funil_id: Number(e.target.value) || null, etapa_id: null })} className={`${campo} cursor-pointer`}>
-          <option value="">O primeiro funil</option>
-          {funis.map((f) => (
-            <option key={f.id} value={f.id}>
-              {f.nome}
-            </option>
-          ))}
-        </SelectAuto>
-      </div>
-      <div className={FIELD_CLASS}>
-        <label htmlFor={idCampo('etapa')} className={LABEL_CLASS}>Etapa</label>
-        <SelectAuto id={idCampo('etapa')} value={etapaId ?? ''} onChange={(e) => onChange({ etapa_id: Number(e.target.value) || null })} disabled={!funilId} className={`${campo} cursor-pointer`}>
-          <option value="">A primeira etapa</option>
-          {etapas.map((e) => (
-            <option key={e.id} value={e.id}>
-              {e.nome}
-            </option>
-          ))}
-        </SelectAuto>
-      </div>
-    </>
-  );
-};
-
 const PainelNo: React.FC<PainelProps> = ({ no, somenteLeitura, departamentos, variaveis, onAlterar, onExcluir, onFechar, pedirConfirmacao, onErro }) => {
   const { tipo, dados: d } = no.data;
   const info = TIPOS_NO[tipo];
@@ -720,8 +671,7 @@ const PainelNo: React.FC<PainelProps> = ({ no, somenteLeitura, departamentos, va
             <label htmlFor={id('tipo')} className={LABEL_CLASS}>Verificar</label>
             <SelectAuto id={id('tipo')} value={d.tipo} onChange={(e) => set({ tipo: e.target.value })} className={`${campo} cursor-pointer`}>
               <option value="horario">Horário de atendimento</option>
-              <option value="cadastrado">Cliente cadastrado no CRM</option>
-              <option value="negocio">Cliente com negócio aberto</option>
+              <option value="cadastrado">Cliente cadastrado</option>
               <option value="variavel">Valor de uma variável</option>
             </SelectAuto>
           </div>
@@ -803,7 +753,7 @@ const PainelNo: React.FC<PainelProps> = ({ no, somenteLeitura, departamentos, va
             'O que a empresa faz, produtos e serviços, preços que podem ser informados, horário de atendimento, endereço, formas de pagamento, prazos, políticas, perguntas frequentes...',
           )}
           <span className={HINT_CLASS}>
-            Usa a chave e o modelo de Configurações › IA. A IA responde só com o texto-base e os dados do cliente no CRM; a conversa fica com ela até passar para
+            Usa a chave e o modelo de Configurações › IA. A IA responde só com o texto-base e os dados do cliente no cadastro; a conversa fica com ela até passar para
             humano: aí segue a saída "passou p/ humano" (sem ligação, a conversa fica com a equipe).
           </span>
         </>
@@ -828,31 +778,6 @@ const PainelNo: React.FC<PainelProps> = ({ no, somenteLeitura, departamentos, va
           <span className={HINT_CLASS}>
             Usa a chave e o modelo de Configurações › IA. A IA faz a pergunta, entende a resposta (número ou palavras) e segue pela saída certa; a escolha fica em {'{{ia_opcao}}'}.
             Se o cliente já disser o que quer na primeira mensagem, vai direto.
-          </span>
-        </>
-      )}
-
-      {tipo === 'lead' && (
-        <>
-          {linha('nome', 'Nome', '{{nome}}')}
-          {linha('empresa', 'Empresa', '{{empresa}}')}
-          {linha('email', 'E-mail', '{{email}}')}
-          {linha('interesse', 'Interesse', '{{interesse}}')}
-          <span className={HINT_CLASS}>Cliente já cadastrado: só abre o negócio (se não houver um aberto) e a atividade para o vendedor do revezamento.</span>
-        </>
-      )}
-
-      {tipo === 'prospeccao' && (
-        <>
-          <FunilEtapa funilId={d.funil_id} etapaId={d.etapa_id} idCampo={id} onChange={set} />
-          {linha('negocio', 'Título do negócio', 'Prospecção')}
-          {linha('nome', 'Nome', '{{nome}}')}
-          {linha('empresa', 'Empresa', '{{empresa}}')}
-          {linha('email', 'E-mail', '{{email}}')}
-          {textoCom('observacao', 'Observação da atividade (opcional)', 3)}
-          <span className={HINT_CLASS}>
-            Sem cadastro, a pessoa entra como lead. Já tendo negócio aberto nesse funil, usa ele; senão abre um novo para o vendedor do revezamento, com a atividade
-            "Prospecção pelo WhatsApp". Vindo de uma campanha, o negócio fica ligado a ela.
           </span>
         </>
       )}

@@ -64,7 +64,7 @@ export function configSmtpPublica(cfg: ConfigSmtp | null) {
   return { ...resto, senha_definida: Boolean(senha_cifrada) };
 }
 
-/** Conta de e-mail: comercial (propostas, pedidos, contratos, campanhas) ou do suporte (pesquisa de satisfação, chamados) */
+/** Conta de e-mail: geral ou do suporte (pesquisa de satisfação, chamados) */
 export type ContaEmail = 'comercial' | 'suporte';
 
 /** Configuração da conta; a do suporte sem servidor preenchido usa a comercial */

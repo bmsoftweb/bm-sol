@@ -1,5 +1,5 @@
 import assert from 'node:assert';
-import { OPCOES_MENU, lerPermissoes, mesclarPermissoes, podeAcessar, prepararPermissoes } from './permissoes.js';
+import { OPCOES_MENU, lerPermissoes, podeAcessar, prepararPermissoes } from './permissoes.js';
 
 // Opções do menu: telas fixas e cadastros; Usuários fica de fora (só administrador)
 for (const id of ['conversas', 'chamados_fila', 'pessoas', 'departamentos']) assert.ok(OPCOES_MENU.includes(id), id);
@@ -32,9 +32,5 @@ assert.ok(!podeAcessar({ tipo: 'client', permissoes: null }, 'configuracoes'));
 assert.ok(podeAcessar({ tipo: 'admin', permissoes: [] }, 'configuracoes'));
 assert.ok(!podeAcessar(null, 'kanban'));
 
-// Mesma coluna do bm-crm: as opções do CRM ficam como estavam
-assert.deepStrictEqual(mesclarPermissoes(['pessoas'], '["kanban","conversas"]'), ['pessoas', 'kanban']);
-assert.ok(mesclarPermissoes(['pessoas'], null)!.includes('kanban'), 'acessava tudo: continua com o CRM');
-assert.strictEqual(mesclarPermissoes(null, '["kanban"]'), null);
 
 console.log('permissoes: ok');

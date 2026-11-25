@@ -397,8 +397,7 @@ export default function App() {
   useEffect(() => {
     setUsoTelas((u) => [activeTab, ...u.filter((t) => t !== activeTab)].slice(0, MAX_TELAS));
   }, [activeTab]);
-  // Tela escondida que volta a aparecer recarrega (lista, combos): o que mudou em outra tela (ex.: segmento criado na
-  // Prospecção, leads incluídos) aparece. Filtros, página e formulários abertos continuam como estavam.
+  // Tela escondida que volta a aparecer recarrega (lista, combos): o que mudou em outra tela aparece. Filtros, página e formulários abertos continuam como estavam.
   const [voltas, setVoltas] = useState<Record<string, number>>({});
   const telaAnterior = useRef(activeTab);
   useEffect(() => {

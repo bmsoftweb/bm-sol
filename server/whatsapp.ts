@@ -12,23 +12,7 @@ import { notificar } from './notificacoes.js';
  * "provedor"), por empresa. Empresa sem configuração usa o .env:
  *   WHATSAPP_PROVEDOR=zapi       ZAPI_INSTANCIA, ZAPI_TOKEN, ZAPI_CLIENT_TOKEN
  *   WHATSAPP_PROVEDOR=evolution  EVOLUTION_URL, EVOLUTION_INSTANCIA, EVOLUTION_APIKEY
- *   WHATSAPP_INTERVALO_SEGUNDOS  pausa entre mensagens das campanhas (padrão 5)
- *
- * Envio das campanhas: a cada minuto pega os disparos pendentes já vencidos de campanhas em
- * execução com canal WhatsApp ou multicanal e envia um por vez, com intervalo entre as
- * mensagens (disparo em rajada é o que mais faz número não oficial ser bloqueado).
- * Campanha pausada não envia; os disparos dela esperam a volta para "em execução".
- *
- * WhatsApp das campanhas (chave "campanhas", mesma estrutura): outro número só para as campanhas,
- * para um bloqueio por disparo em massa não derrubar o número do atendimento. Sem ele, as campanhas
- * saem pelo número padrão. A conversa lembra por qual número entrou (whatsapp_conversas.conta): as
- * respostas (tela, bot, automação) saem por ele, e quem responde no número das campanhas é atendido
- * pela Automação das campanhas.
  */
-
-/** Conta do WhatsApp: a padrão (atendimento, propostas...) ou a das campanhas */
-export type ContaWhats = 'provedor' | 'campanhas';
-export const contaWhats = (v: unknown): ContaWhats => (v === 'campanhas' ? 'campanhas' : 'provedor');
 
 /**
  * Falha do provedor (fora do ar, chave errada, número desconectado, sem configuração): o
@@ -107,21 +91,10 @@ const idInstancia = (c: { provedor: string; url?: string; instancia: string }) =
  * Uma instância é de uma empresa só: recebe um endereço de aviso só (as mensagens iriam para uma
  * empresa apenas) e as duas enviariam pelo mesmo número. O erro não diz de quem ela é.
  */
-export async function conferirInstanciaUnica(empresaId: string, cfg: ConfigWhats | null, conta: ContaWhats = 'provedor') {
+export async function conferirInstanciaUnica(empresaId: string, cfg: ConfigWhats | null) {
   if (!cfg?.provedor) return;
-  // A outra conta da própria empresa também: o número das campanhas tem de ser outro
-  const outraConta = conta === 'provedor' ? 'campanhas' : 'provedor';
-  const [propria] = await pool.query<any[]>("SELECT valor FROM config WHERE grupo = 'whatsapp' AND chave = ? AND empresa_id = ?", [outraConta, empresaId]);
-  try {
-    const p = propria[0] ? JSON.parse(propria[0].valor) : null;
-    if (p?.provedor && idInstancia(p) === idInstancia(cfg)) {
-      throw new Error('WhatsApp: a instância das campanhas precisa ser outra, diferente da padrão (outro número).');
-    }
-  } catch (e: any) {
-    if (e?.message?.startsWith('WhatsApp:')) throw e;
-  }
   const [rows] = await pool.query<any[]>(
-    "SELECT valor FROM config WHERE grupo = 'whatsapp' AND chave IN ('provedor', 'campanhas') AND empresa_id <> ?",
+    "SELECT valor FROM config WHERE grupo = 'whatsapp' AND chave = 'provedor' AND empresa_id <> ?",
     [empresaId],
   );
   const minha = idInstancia(cfg);
@@ -145,16 +118,12 @@ export function configWhatsPublica(cfg: ConfigWhats | null) {
   return { ...resto, token_definido: Boolean(token_cifrado), client_token_definido: Boolean(client_token_cifrado) };
 }
 
-/**
- * Credenciais da conta: a configuração da tela; a padrão, sem ela, usa o .env. A das campanhas não tem
- * .env nem cai na padrão aqui (testar, conectar e desconectar mexem só nela): ver credenciaisDeCampanha
- */
-async function credenciais(empresaId: string | number, conta: ContaWhats = 'provedor'): Promise<Credenciais> {
-  const cfg: ConfigWhats | null = await lerConfig(String(empresaId), 'whatsapp', conta);
+/** Credenciais: a configuração da tela; sem ela, o .env */
+async function credenciais(empresaId: string | number): Promise<Credenciais> {
+  const cfg: ConfigWhats | null = await lerConfig(String(empresaId), 'whatsapp', 'provedor');
   const falta = (o: string) => {
-    throw new ErroProvedor(`WhatsApp${conta === 'campanhas' ? ' das campanhas' : ''}: ${o} não configurado. Preencha ${ONDE}.`);
+    throw new ErroProvedor(`WhatsApp: ${o} não configurado. Preencha ${ONDE}.`);
   };
-  if (!cfg?.provedor && conta === 'campanhas') return falta('provedor');
   if (cfg?.provedor) {
     const token = cfg.token_cifrado ? decifrar(cfg.token_cifrado, ONDE) : falta(cfg.provedor === 'zapi' ? 'token da instância' : 'apikey');
     const clientToken = cfg.provedor === 'zapi' ? (cfg.client_token_cifrado ? decifrar(cfg.client_token_cifrado, ONDE) : falta('token de segurança')) : '';
@@ -173,42 +142,9 @@ async function credenciais(empresaId: string | number, conta: ContaWhats = 'prov
   return falta('provedor');
 }
 
-/** Envio das campanhas: o WhatsApp das campanhas, ou o padrão quando ele não foi configurado */
-async function credenciaisDeCampanha(empresaId: string | number): Promise<Credenciais> {
-  const cfg: ConfigWhats | null = await lerConfig(String(empresaId), 'whatsapp', 'campanhas');
-  return credenciais(empresaId, cfg?.provedor ? 'campanhas' : 'provedor');
-}
-
-/** Por qual número a conversa entrou (a última mensagem recebida); sem registro, o padrão */
-export async function contaDaConversa(empresaId: string | number, telefone: string): Promise<ContaWhats> {
-  const [r] = await pool.query<any[]>('SELECT conta FROM whatsapp_conversas WHERE empresa_id = ? AND telefone = ?', [empresaId, telefone]);
-  return contaWhats(r[0]?.conta);
-}
-
-/**
- * Número que envia: o principal, ou o das campanhas (o padrão quando ele não foi configurado). Sai pelo das campanhas
- * só quem pede: a tela (o técnico escolhe), as Automações, a pesquisa e a inatividade (seguem a conversa) e o Bot das
- * pesquisas de satisfação (o número escolhido na pesquisa; server/atividadeBot.ts). Chamados, automáticas e avisos saem sempre pelo principal.
- */
-const credenciaisDaConta = (empresaId: string | number, conta: ContaWhats = 'provedor'): Promise<Credenciais> =>
-  conta === 'campanhas' ? credenciaisDeCampanha(empresaId) : credenciais(empresaId);
-
-/** Instância do número da conversa (por onde o cliente escreveu por último) */
-async function credenciaisPara(empresaId: string | number, telefone: string): Promise<Credenciais> {
-  return credenciaisDaConta(empresaId, await contaDaConversa(empresaId, telefone));
-}
-
-/**
- * Mensagem recebida: a conversa passa a ser do número por onde chegou. Trocar de número recomeça a
- * automação (cada número tem a sua); a situação do atendimento (bot, humano, atendente) fica
- */
-async function marcarConta(empresaId: string | number, telefone: string, conta: ContaWhats) {
-  await pool.query(
-    `INSERT INTO whatsapp_conversas (empresa_id, telefone, conta) VALUES (?, ?, ?)
-     ON DUPLICATE KEY UPDATE no_atual = IF(conta <> VALUES(conta), NULL, no_atual), retomar_em = IF(conta <> VALUES(conta), NULL, retomar_em),
-       conta = VALUES(conta)`,
-    [empresaId, telefone, conta],
-  );
+/** Mensagem recebida: a conversa passa a existir (a situação do atendimento fica na linha dela) */
+async function abrirConversa(empresaId: string | number, telefone: string) {
+  await pool.query('INSERT IGNORE INTO whatsapp_conversas (empresa_id, telefone) VALUES (?, ?)', [empresaId, telefone]);
 }
 
 /** Só dígitos, com o DDI 55 quando vier só DDD + número */
@@ -255,7 +191,7 @@ async function enviar(c: Credenciais, zapi: { rota: string; corpo: unknown }, ev
 
 /** Apaga para todos uma mensagem enviada por nós: no WhatsApp do cliente fica "Mensagem apagada" */
 export async function apagarParaTodos(empresaId: string | number, telefone: string, waId: string): Promise<void> {
-  const c = await credenciaisPara(empresaId, telefone);
+  const c = await credenciais(empresaId);
   const { url, headers } = endereco(c, {
     zapi: `messages?messageId=${encodeURIComponent(waId)}&phone=${telefone}&owner=true`,
     evolution: 'chat/deleteMessageForEveryone',
@@ -303,9 +239,7 @@ export async function citacaoDa(empresaId: string | number, telefone: string, id
 interface Registro {
   pessoa_id?: number | null;
   contato_id?: number | null;
-  lead_id?: number | null;
   usuario_id?: number | null;
-  disparo_id?: number | null;
   /** Mensagem privada: só este departamento (e o administrador) vê na tela */
   privado_departamento_id?: number | null;
   /** Mensagem da conversa que esta responde (citação) */
@@ -323,62 +257,9 @@ export async function enviarWhatsApp(
   reg: Registro = {},
   assinatura?: string,
   citacao?: Citacao | null,
-  conta: ContaWhats = 'provedor',
 ): Promise<string> {
-  const resposta = await textoPara(await credenciaisDaConta(empresaId, conta), telefone, assinado(assinatura, texto), citacao);
+  const resposta = await textoPara(await credenciais(empresaId), telefone, assinado(assinatura, texto), citacao);
   return registrarEnviada(empresaId, telefone, resposta, { ...reg, tipo: 'texto', texto, resposta_de: citacao?.id ?? null });
-}
-
-/** Mensagem de campanha (envio manual de um disparo): pelo WhatsApp das campanhas, ou o padrão sem ele */
-export async function enviarWhatsAppCampanha(empresaId: string | number, telefone: string, texto: string, reg: Registro = {}, imagem?: string | null): Promise<void> {
-  await mandarCampanha(await credenciaisDeCampanha(empresaId), empresaId, telefone, texto, imagem, reg);
-}
-
-/** Imagem da campanha (data URL gravada em campanhas.imagem) → arquivo para enviar; null sem imagem */
-export function imagemDaCampanha(dataUrl: string | null | undefined): { mimetype: string; base64: string; nome: string } | null {
-  const m = /^data:(image\/(png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl ?? ''));
-  return m ? { mimetype: m[1], base64: m[3], nome: `imagem.${m[2] === 'jpeg' ? 'jpg' : m[2]}` } : null;
-}
-
-/** Legenda de imagem maior que isto vai numa mensagem de texto depois da imagem (limite dos provedores) */
-const LEGENDA_MAX = 1000;
-
-/**
- * Mensagem de campanha: só o texto, ou a imagem com o texto de legenda (texto longo sai numa mensagem logo
- * depois da imagem). Depois de sair, falha ao registrar na conversa só vai para o log: não pode virar reenvio.
- */
-async function mandarCampanha(c: Credenciais, empresaId: string | number, telefone: string, texto: string, imagem: string | null | undefined, reg: Registro) {
-  // Imagem sem legenda: texto vazio no registro (a mensagem de texto vem logo depois)
-  const registrar = (resposta: any, extra: { tipo: string; texto: string | null }) =>
-    registrarEnviada(empresaId, telefone, resposta, { ...reg, tipo: extra.tipo, texto: extra.texto ?? '' }).catch((err) =>
-      console.error(`WhatsApp: mensagem de campanha enviada, mas não registrada: ${err.message}`),
-    );
-  const img = imagemDaCampanha(imagem);
-  if (!img) {
-    await registrar(await textoPara(c, telefone, texto), { tipo: 'texto', texto });
-    return;
-  }
-  const cabe = texto.length <= LEGENDA_MAX;
-  await registrar(await midiaPara(c, telefone, { tipo: 'imagem', ...img, legenda: cabe ? texto : null }), { tipo: 'imagem', texto: cabe ? texto : null });
-  if (!cabe) await registrar(await textoPara(c, telefone, texto), { tipo: 'texto', texto });
-}
-
-/** Envia um PDF como documento, com legenda */
-export async function enviarPdfWhatsApp(
-  empresaId: string | number,
-  telefone: string,
-  pdf: Buffer,
-  nomeArquivo: string,
-  legenda: string,
-  reg: Registro = {},
-): Promise<void> {
-  const base64 = pdf.toString('base64');
-  const resposta = await enviar(
-    await credenciais(empresaId),
-    { rota: 'send-document/pdf', corpo: { phone: telefone, document: `data:application/pdf;base64,${base64}`, fileName: nomeArquivo, caption: legenda } },
-    { rota: 'sendMedia', corpo: { number: telefone, mediatype: 'document', mimetype: 'application/pdf', media: base64, fileName: nomeArquivo, caption: legenda } },
-  );
-  await registrarEnviada(empresaId, telefone, resposta, { ...reg, tipo: 'documento', texto: legenda || null, arquivo_nome: nomeArquivo });
 }
 
 /** Arquivo enviado pela tela de conversas (base64 sem o prefixo data:) */
@@ -401,10 +282,9 @@ export async function enviarMidiaWhatsApp(
   reg: Registro = {},
   assinatura?: string,
   citacao?: Citacao | null,
-  conta: ContaWhats = 'provedor',
 ): Promise<string> {
   const legenda = a.legenda ? assinado(assinatura, a.legenda) : a.legenda;
-  const resposta = await midiaPara(await credenciaisDaConta(empresaId, conta), telefone, { ...a, legenda }, citacao);
+  const resposta = await midiaPara(await credenciais(empresaId), telefone, { ...a, legenda }, citacao);
   return registrarEnviada(empresaId, telefone, resposta, {
     ...reg,
     resposta_de: citacao?.id ?? null,
@@ -442,13 +322,8 @@ async function midiaPara(c: Credenciais, telefone: string, a: ArquivoEnvio, q?: 
   return resposta;
 }
 
-/** Pausa entre mensagens da empresa, em segundos (Configurações › WhatsApp) */
-export async function intervaloWhatsApp(empresaId: string | number): Promise<number> {
-  return (await credenciais(empresaId)).intervalo;
-}
-
 /**
- * Mensagem automática (server/automaticas.ts). A origem (evento:registro:momento) é única na
+ * Mensagem automática (avisos do Bot e dos departamentos). A origem (evento:registro:momento) é única na
  * empresa e fica reservada ANTES do envio: o mesmo aviso nunca sai duas vezes, nem com dois
  * servidores. Provedor em falha desfaz a reserva (tenta no próximo ciclo) e lança ErroProvedor;
  * destinatário recusado fica como "falhou", com o motivo. Devolve false se já tinha saído.
@@ -463,9 +338,9 @@ export async function enviarAutomatica(empresaId: string | number, origem: strin
 /** Reserva a origem (única na empresa) antes de enviar; null se ela já existia (já saiu ou está saindo) */
 export async function reservarEnvio(empresaId: string | number, origem: string, dono: Dono, telefone: string, texto: string): Promise<number | null> {
   const [r] = await pool.query<any>(
-    `INSERT IGNORE INTO whatsapp_mensagens (empresa_id, pessoa_id, contato_id, lead_id, telefone, direcao, tipo, texto, situacao, origem, vista, data_hora)
-     VALUES (?, ?, ?, ?, ?, 'enviada', 'texto', ?, 'pendente', ?, 1, NOW())`,
-    [empresaId, dono.pessoa_id, dono.contato_id, dono.pessoa_id ? null : dono.lead_id ?? null, telefone, texto, origem],
+    `INSERT IGNORE INTO whatsapp_mensagens (empresa_id, pessoa_id, contato_id, telefone, direcao, tipo, texto, situacao, origem, vista, data_hora)
+     VALUES (?, ?, ?, ?, 'enviada', 'texto', ?, 'pendente', ?, 1, NOW())`,
+    [empresaId, dono.pessoa_id, dono.contato_id, telefone, texto, origem],
   );
   return r.affectedRows ? r.insertId : null;
 }
@@ -483,12 +358,10 @@ export async function enviarReservada(
   midia?: ArquivoEnvio,
   /** Nome do bot: o cliente vê "*Eloisa:* ..." (o registro fica sem, como nas do atendente) */
   assinatura?: string,
-  /** Número que envia (padrão: o principal) */
-  conta: ContaWhats = 'provedor',
 ): Promise<void> {
   let resposta: any;
   try {
-    const c = await credenciaisDaConta(empresaId, conta);
+    const c = await credenciais(empresaId);
     resposta = midia
       ? await midiaPara(c, telefone, midia.legenda ? { ...midia, legenda: assinado(assinatura, midia.legenda) } : midia)
       : await textoPara(c, telefone, assinado(assinatura, texto));
@@ -515,9 +388,9 @@ export async function enviarReservada(
 }
 
 /** Mostra "digitando..." para o cliente por alguns segundos (só Evolution; falha é ignorada) */
-export async function mostrarDigitando(empresaId: string | number, telefone: string, ms: number, conta: ContaWhats = 'provedor'): Promise<void> {
+export async function mostrarDigitando(empresaId: string | number, telefone: string, ms: number): Promise<void> {
   try {
-    const c = await credenciaisDaConta(empresaId, conta);
+    const c = await credenciais(empresaId);
     if (c.provedor !== 'evolution') return;
     await fetch(`${c.url}/chat/sendPresence/${encodeURIComponent(c.instancia)}`, {
       method: 'POST',
@@ -555,8 +428,6 @@ export function chaveTelefone(bruto: string | null | undefined, comDdi = false):
 export interface Dono {
   pessoa_id: number | null;
   contato_id: number | null;
-  /** Sem pessoa: o lead (Marketing › Leads) com esse número */
-  lead_id?: number | null;
 }
 
 /**
@@ -595,7 +466,6 @@ export function escolherDono(chave: string, candidatos: { de: 'p' | 'c'; pessoa_
  * cadastro. MAX(pessoa_id) pegava o cadastro de maior número quando o mesmo celular está em mais de um.
  */
 export const PESSOA_RECENTE = (a = '') => `CAST(SUBSTRING_INDEX(GROUP_CONCAT(${a}pessoa_id ORDER BY ${a}id DESC), ',', 1) AS UNSIGNED)`;
-export const LEAD_RECENTE = (a = '') => `CAST(SUBSTRING_INDEX(GROUP_CONCAT(${a}lead_id ORDER BY ${a}id DESC), ',', 1) AS UNSIGNED)`;
 export const CONTATO_RECENTE = (a = '') =>
   `NULLIF(CAST(SUBSTRING_INDEX(GROUP_CONCAT(IF(${a}pessoa_id IS NULL, NULL, IFNULL(${a}contato_id, 0)) ORDER BY ${a}id DESC), ',', 1) AS UNSIGNED), 0)`;
 
@@ -613,35 +483,7 @@ export async function donoDoTelefone(empresaId: string | number, telefone: strin
      ORDER BY pessoa_id, contato_id`,
     [empresaId, fim, fim, empresaId, fim, fim, fim],
   );
-  const dono = escolherDono(chave, rows);
-  if (dono.pessoa_id) return dono;
-  // Não está em Pessoas: pode ser um lead (ainda não convertido)
-  const [leads] = await pool.query<any[]>(
-    `SELECT 'p' AS de, id AS pessoa_id, NULL AS contato_id, whatsapp, NULL AS celular, telefone
-       FROM leads WHERE empresa_id = ? AND convertido_em IS NULL AND (${oito('whatsapp')} OR ${oito('telefone')}) ORDER BY id`,
-    [empresaId, fim, fim],
-  );
-  return { pessoa_id: null, contato_id: null, lead_id: escolherDono(chave, leads).pessoa_id };
-}
-
-/**
- * Passa ao disparo da campanha o que o WhatsApp informou da mensagem: entregue, lida ou falhou.
- * Nunca volta atrás (lido não vira entregue).
- */
-async function repassarAoDisparo(empresaId: string | number, waId: string) {
-  await pool.query(
-    `UPDATE campanha_disparos d JOIN whatsapp_mensagens w ON w.disparo_id = d.id
-        SET d.erro = IF(w.situacao = 'falhou' AND d.situacao = 'enviado', 'O WhatsApp não entregou a mensagem.', d.erro),
-            d.entregue_em = IF(w.situacao IN ('entregue', 'lida'), COALESCE(d.entregue_em, NOW()), d.entregue_em),
-            d.lido_em = IF(w.situacao = 'lida', COALESCE(d.lido_em, NOW()), d.lido_em),
-            d.situacao = CASE
-              WHEN w.situacao = 'lida' THEN 'lido'
-              WHEN w.situacao = 'entregue' AND d.situacao = 'enviado' THEN 'entregue'
-              WHEN w.situacao = 'falhou' AND d.situacao = 'enviado' THEN 'falhou'
-              ELSE d.situacao END
-      WHERE w.empresa_id = ? AND w.wa_id = ? AND d.situacao IN ('enviado', 'entregue')`,
-    [empresaId, waId],
-  );
+  return escolherDono(chave, rows);
 }
 
 /**
@@ -659,39 +501,30 @@ async function registrarEnviada(
   const numero = typeof jid === 'string' && jid.endsWith('@s.whatsapp.net') ? digitosDoJid(jid) : telefone;
   try {
     const waId: string | null = resposta?.key?.id ?? resposta?.messageId ?? null;
-    // Sem a pessoa (resposta pela conversa, proposta), procura pelo número; com ela, o contato vem junto se o número for dele
-    const dono: Dono = m.pessoa_id
-      ? { pessoa_id: m.pessoa_id, contato_id: m.contato_id ?? null }
-      : m.lead_id
-        ? { pessoa_id: null, contato_id: null, lead_id: m.lead_id }
-        : await donoDoTelefone(empresaId, numero);
+    // Sem a pessoa (resposta pela conversa), procura pelo número; com ela, o contato vem junto se o número for dele
+    const dono: Dono = m.pessoa_id ? { pessoa_id: m.pessoa_id, contato_id: m.contato_id ?? null } : await donoDoTelefone(empresaId, numero);
     await pool.query(
       `INSERT INTO whatsapp_mensagens
-         (empresa_id, pessoa_id, contato_id, lead_id, telefone, direcao, tipo, texto, arquivo_nome, wa_id, resposta_de, situacao, disparo_id, usuario_id, privado_departamento_id, vista, data_hora)
-       VALUES (?, ?, ?, ?, ?, 'enviada', ?, ?, ?, ?, ?, 'enviada', ?, ?, ?, 1, NOW())
+         (empresa_id, pessoa_id, contato_id, telefone, direcao, tipo, texto, arquivo_nome, wa_id, resposta_de, situacao, usuario_id, privado_departamento_id, vista, data_hora)
+       VALUES (?, ?, ?, ?, 'enviada', ?, ?, ?, ?, ?, 'enviada', ?, ?, 1, NOW())
        ON DUPLICATE KEY UPDATE pessoa_id = COALESCE(pessoa_id, VALUES(pessoa_id)), contato_id = COALESCE(contato_id, VALUES(contato_id)),
-         lead_id = IF(COALESCE(pessoa_id, VALUES(pessoa_id)) IS NULL, COALESCE(lead_id, VALUES(lead_id)), NULL),
-         disparo_id = COALESCE(disparo_id, VALUES(disparo_id)), usuario_id = COALESCE(usuario_id, VALUES(usuario_id)),
+         usuario_id = COALESCE(usuario_id, VALUES(usuario_id)),
          arquivo_nome = COALESCE(arquivo_nome, VALUES(arquivo_nome)), texto = COALESCE(VALUES(texto), texto),
          resposta_de = COALESCE(resposta_de, VALUES(resposta_de))`,
       [
         empresaId,
         dono.pessoa_id,
         dono.contato_id,
-        dono.lead_id ?? null,
         numero,
         m.tipo,
         m.texto,
         m.arquivo_nome ?? null,
         waId,
         m.resposta_de ?? null,
-        m.disparo_id ?? null,
         m.usuario_id ?? null,
         m.privado_departamento_id ?? null,
       ],
     );
-    // O aviso de entrega pode ter chegado antes deste registro
-    if (waId && m.disparo_id) await repassarAoDisparo(empresaId, waId);
   } catch (err: any) {
     console.error(`WhatsApp: mensagem enviada para ${telefone} não registrada: ${err.message}`);
   }
@@ -801,16 +634,14 @@ async function gravarMensagem(empresaId: number, d: any): Promise<MensagemNova |
   const citada = citadaDe(d);
   const [q] = citada ? await pool.query<any[]>('SELECT id FROM whatsapp_mensagens WHERE empresa_id = ? AND wa_id = ? LIMIT 1', [empresaId, citada]) : [[]];
   const [r] = await pool.query<any>(
-    `INSERT INTO whatsapp_mensagens (empresa_id, pessoa_id, contato_id, lead_id, telefone, nome_contato, direcao, tipo, texto, arquivo_nome, wa_id, resposta_de, situacao, vista, data_hora)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(FROM_UNIXTIME(?), NOW()))
+    `INSERT INTO whatsapp_mensagens (empresa_id, pessoa_id, contato_id, telefone, nome_contato, direcao, tipo, texto, arquivo_nome, wa_id, resposta_de, situacao, vista, data_hora)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(FROM_UNIXTIME(?), NOW()))
      ON DUPLICATE KEY UPDATE pessoa_id = COALESCE(pessoa_id, VALUES(pessoa_id)), contato_id = COALESCE(contato_id, VALUES(contato_id)),
-       lead_id = IF(COALESCE(pessoa_id, VALUES(pessoa_id)) IS NULL, COALESCE(lead_id, VALUES(lead_id)), NULL),
        resposta_de = COALESCE(resposta_de, VALUES(resposta_de))`,
     [
       empresaId,
       dono.pessoa_id,
       dono.contato_id,
-      dono.lead_id ?? null,
       telefone,
       nomeContato,
       recebida ? 'recebida' : 'enviada',
@@ -856,14 +687,13 @@ async function atualizarSituacao(empresaId: string | number, d: any) {
         AND (? = 'falhou' OR FIELD(situacao, 'pendente', 'enviada', 'entregue', 'lida') < FIELD(?, 'pendente', 'enviada', 'entregue', 'lida'))`,
     [situacao, empresaId, waId, situacao, situacao],
   );
-  if (r.affectedRows) await repassarAoDisparo(empresaId, waId);
 }
 
 /** Empresa dona do token do endereço do webhook */
-async function empresaDoToken(token: string): Promise<{ empresaId: number; cfg: ConfigWhats; conta: ContaWhats } | null> {
+async function empresaDoToken(token: string): Promise<{ empresaId: number; cfg: ConfigWhats } | null> {
   if (!/^[0-9a-f]{48}$/.test(token)) return null;
   const [rows] = await pool.query<any[]>(
-    "SELECT empresa_id, chave, valor FROM config WHERE grupo = 'whatsapp' AND chave IN ('provedor', 'campanhas') AND empresa_id IS NOT NULL",
+    "SELECT empresa_id, valor FROM config WHERE grupo = 'whatsapp' AND chave = 'provedor' AND empresa_id IS NOT NULL",
   );
   for (const r of rows) {
     let cfg: ConfigWhats | null = null;
@@ -873,7 +703,7 @@ async function empresaDoToken(token: string): Promise<{ empresaId: number; cfg: 
       continue;
     }
     if (cfg?.webhook_token?.length === token.length && crypto.timingSafeEqual(Buffer.from(cfg.webhook_token), Buffer.from(token))) {
-      return { empresaId: r.empresa_id, cfg, conta: contaWhats(r.chave) };
+      return { empresaId: r.empresa_id, cfg };
     }
   }
   return null;
@@ -894,8 +724,7 @@ export async function receberAvisoEvolution(token: string, corpo: any): Promise<
     if (evento === 'messages.upsert' || evento === 'send.message') {
       const nova = await gravarMensagem(dono.empresaId, d);
       if (nova) {
-        // A conversa segue pelo número por onde a mensagem chegou (o das campanhas tem a sua automação)
-        await marcarConta(dono.empresaId, nova.telefone, dono.conta);
+        await abrirConversa(dono.empresaId, nova.telefone);
         novas.push(nova);
       }
     } else if (evento === 'messages.update') await atualizarSituacao(dono.empresaId, d);
@@ -926,8 +755,8 @@ async function cadastrarWebhook(c: Credenciais, url: string): Promise<void> {
  * Liga o recebimento: cadastra na Evolution o endereço do CRM (origem = endereço público de
  * onde a tela foi aberta) para os avisos de mensagens novas e de entrega/leitura.
  */
-export async function ativarRecebimento(empresaId: string, origem: string, conta: ContaWhats = 'provedor'): Promise<{ origem: string; em: string }> {
-  const cfg: ConfigWhats | null = await lerConfig(empresaId, 'whatsapp', conta);
+export async function ativarRecebimento(empresaId: string, origem: string): Promise<{ origem: string; em: string }> {
+  const cfg: ConfigWhats | null = await lerConfig(empresaId, 'whatsapp', 'provedor');
   if (!cfg?.provedor) throw new Error(`WhatsApp: grave o provedor em ${ONDE} antes de ativar o recebimento.`);
   if (cfg.provedor !== 'evolution') throw new Error('WhatsApp: por enquanto o recebimento de mensagens só funciona com a Evolution API.');
   let base: URL;
@@ -939,15 +768,14 @@ export async function ativarRecebimento(empresaId: string, origem: string, conta
   if (['localhost', '127.0.0.1', '[::1]'].includes(base.hostname) || /^(10|192\.168|172\.(1[6-9]|2\d|3[01]))\./.test(base.hostname)) {
     throw new Error('WhatsApp: a Evolution não alcança este endereço (rede local). Abra o CRM pelo endereço público (o da Vercel) e ative o recebimento de lá.');
   }
-  const c = await credenciais(empresaId, conta);
+  const c = await credenciais(empresaId);
   const token = cfg.webhook_token || crypto.randomBytes(24).toString('hex');
   await cadastrarWebhook(c, urlWebhook(base.origin, token));
   const [agora] = await pool.query<any[]>("SELECT DATE_FORMAT(NOW(), '%Y-%m-%d %H:%i:%s') AS em");
   const webhook = { origem: base.origin, em: agora[0].em };
-  await pool.query("UPDATE config SET valor = ? WHERE empresa_id = ? AND grupo = 'whatsapp' AND chave = ?", [
+  await pool.query("UPDATE config SET valor = ? WHERE empresa_id = ? AND grupo = 'whatsapp' AND chave = 'provedor'", [
     JSON.stringify({ ...cfg, webhook_token: token, webhook }),
     empresaId,
-    conta,
   ]);
   return webhook;
 }
@@ -999,8 +827,8 @@ async function conectadoNoProvedor(c: Credenciais): Promise<{ conectado: boolean
 }
 
 /** Consulta no provedor se o número está conectado; erro só quando o provedor falha (fora do ar, chave errada) */
-export async function testarWhatsApp(empresaId: string, conta: ContaWhats = 'provedor'): Promise<{ conectado: boolean; numero?: string; mensagem: string }> {
-  const c = await credenciais(empresaId, conta);
+export async function testarWhatsApp(empresaId: string): Promise<{ conectado: boolean; numero?: string; mensagem: string }> {
+  const c = await credenciais(empresaId);
   const { conectado, numero } = await conectadoNoProvedor(c);
   const nome = c.provedor === 'zapi' ? 'Z-API' : 'Evolution';
   return { conectado, numero, mensagem: conectado ? `${nome}: número conectado.` : `${nome}: o provedor respondeu, mas o número está desconectado. Use Conectar WhatsApp.` };
@@ -1011,8 +839,8 @@ export async function testarWhatsApp(empresaId: string, conta: ContaWhats = 'pro
  * Evolution: instance/connect devolve o QR em base64, ou o estado "open" se já conectado.
  * Z-API: qr-code/image devolve o QR em base64, ou connected: true se já conectado.
  */
-export async function conectarWhatsApp(empresaId: string, conta: ContaWhats = 'provedor'): Promise<{ conectado: boolean; qrcode?: string }> {
-  const c = await credenciais(empresaId, conta);
+export async function conectarWhatsApp(empresaId: string): Promise<{ conectado: boolean; qrcode?: string }> {
+  const c = await credenciais(empresaId);
   const { url, headers } = endereco(c, { zapi: 'qr-code/image', evolution: 'instance/connect' });
   const pedirQr = async () => (await requisitar(url, { headers })).json().catch(() => ({}));
   let r: any = await pedirQr();
@@ -1045,9 +873,8 @@ export async function conectarWhatsApp(empresaId: string, conta: ContaWhats = 'p
  * Arquivo de uma mensagem (imagem, figurinha, áudio, vídeo) pelo id no WhatsApp. Evolution: baixa e decifra
  * pelo chat/getBase64FromMediaMessage; o CRM não guarda o arquivo.
  */
-export async function midiaDaMensagem(empresaId: string | number, waId: string, telefone?: string, conta?: ContaWhats): Promise<{ mimetype: string; dados: Buffer }> {
-  // A mídia fica na instância que enviou ou recebeu: a informada (ex.: campanha) ou a do número da conversa
-  const c = conta ? await credenciaisDaConta(empresaId, conta) : telefone ? await credenciaisPara(empresaId, telefone) : await credenciais(empresaId);
+export async function midiaDaMensagem(empresaId: string | number, waId: string): Promise<{ mimetype: string; dados: Buffer }> {
+  const c = await credenciais(empresaId);
   if (c.provedor !== 'evolution') throw new Error('Imagens das mensagens só pela Evolution.');
   const bruta = await midiaGuardada(empresaId, waId);
   const { url, headers } = endereco(c, { zapi: '', evolution: 'chat/getBase64FromMediaMessage' });
@@ -1065,8 +892,8 @@ async function reiniciarInstancia(c: Credenciais): Promise<void> {
 }
 
 /** Desconecta o número (logout): para enviar de novo, é preciso ler outro QR Code */
-export async function desconectarWhatsApp(empresaId: string, conta: ContaWhats = 'provedor'): Promise<void> {
-  const c = await credenciais(empresaId, conta);
+export async function desconectarWhatsApp(empresaId: string): Promise<void> {
+  const c = await credenciais(empresaId);
   const { url, headers } = endereco(c, { zapi: 'disconnect', evolution: 'instance/logout' });
   const logout = () => requisitar(url, { method: c.provedor === 'zapi' ? 'GET' : 'DELETE', headers });
   const fechada = (err: any) => /Connection Closed/i.test(String(err?.message));
@@ -1100,92 +927,6 @@ export async function desconectarWhatsApp(empresaId: string, conta: ContaWhats =
 const esperar = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
 
 /**
- * Um ciclo de envio das campanhas; devolve quantos disparos foram processados.
- * prazoMs: tempo máximo do ciclo (na Vercel a função tem limite); o que não couber fica
- * pendente para o próximo ciclo.
- */
-export async function enviarPendentes(limite = 50, prazoMs = Infinity): Promise<number> {
-  const fim = Date.now() + prazoMs;
-  const conn = await pool.getConnection();
-  try {
-    // Trava no MySQL: dois servidores no mesmo banco não mandam a mesma mensagem duas vezes
-    const [trava] = await conn.query<any[]>("SELECT GET_LOCK('bmsol_envio_whatsapp', 0) AS ok");
-    if (!trava[0]?.ok) return 0;
-    try {
-      // Disparos das campanhas (server/campanhas.ts): destino e texto já vêm prontos, personalizados ao gerar
-      const [fila] = await conn.query<any[]>(
-        `SELECT d.id, d.pessoa_id, d.lead_id, c.empresa_id, d.destino, d.assunto, d.mensagem, c.imagem
-           FROM campanha_disparos d
-           JOIN campanhas c ON c.id = d.campanha_id
-          WHERE d.situacao = 'pendente' AND d.canal = 'whatsapp' AND d.agendado_para <= NOW()
-            AND c.situacao = 'em_execucao' AND c.excluida_em IS NULL
-          ORDER BY d.agendado_para, d.id
-          LIMIT ?`,
-        [limite],
-      );
-      // Credenciais lidas uma vez por empresa no ciclo; empresa com provedor em falha sai do ciclo
-      const creds = new Map<number, Credenciais>();
-      const comFalha = new Set<number>();
-      let processados = 0;
-      for (const d of fila) {
-        if (comFalha.has(d.empresa_id)) continue;
-        try {
-          if (!creds.has(d.empresa_id)) creds.set(d.empresa_id, await credenciaisDeCampanha(d.empresa_id));
-          const c = creds.get(d.empresa_id)!;
-          if (Date.now() + c.intervalo * 1000 + 10_000 > fim) break; // pausa + envio não cabem mais no prazo
-          if (processados) await esperar(c.intervalo * 1000);
-          const assunto = String(d.assunto ?? '').trim();
-          const telefone = telefoneWhatsApp(d.destino);
-          const texto = (assunto ? `*${assunto}*\n\n` : '') + d.mensagem;
-          await mandarCampanha(c, d.empresa_id, telefone, texto, d.imagem, { pessoa_id: d.pessoa_id, lead_id: d.lead_id, disparo_id: d.id });
-          await conn.query(
-            "UPDATE campanha_disparos SET situacao = 'enviado', enviado_em = NOW(), erro = NULL WHERE id = ? AND situacao = 'pendente'",
-            [d.id],
-          );
-          processados++;
-        } catch (err: any) {
-          if (err instanceof ErroProvedor || /SESSION_SECRET/.test(err?.message)) {
-            comFalha.add(d.empresa_id);
-            console.error(`WhatsApp: empresa ${d.empresa_id}: ${err.message}`);
-            continue;
-          }
-          await conn.query(
-            "UPDATE campanha_disparos SET situacao = 'falhou', erro = ? WHERE id = ? AND situacao = 'pendente'",
-            [String(err?.message || err).slice(0, 255), d.id],
-          );
-          processados++;
-        }
-      }
-      return processados;
-    } finally {
-      await conn.query("SELECT RELEASE_LOCK('bmsol_envio_whatsapp')");
-    }
-  } finally {
-    conn.release();
-  }
-}
-
-/** Liga o envio automático das campanhas, a cada minuto (a configuração é lida por empresa) */
-export function iniciarEnvioWhatsApp() {
-  let rodando = false;
-  const ciclo = async () => {
-    if (rodando) return; // o ciclo anterior ainda está enviando
-    rodando = true;
-    try {
-      const n = await enviarPendentes();
-      if (n) console.log(`WhatsApp: ${n} disparo(s) processado(s).`);
-    } catch (err: any) {
-      console.error('WhatsApp: falha no ciclo de envio:', err.message);
-    } finally {
-      rodando = false;
-    }
-  };
-  console.log('WhatsApp: envio automático das campanhas ligado (configuração por empresa, ou .env).');
-  setInterval(ciclo, 60_000);
-  ciclo();
-}
-
-/**
  * Vigia da Evolution (a cada 10 min: cron /api/cron/whatsapp na Vercel, setInterval no server.ts). Para cada número
  * Evolution configurado: confere se está conectado de verdade (o "open" da 2.3.7 mente), reinicia quando a conexão
  * caiu, regrava o webhook quando ele sumiu (instância recriada no painel) e, no número padrão, desconfia do tráfego:
@@ -1194,8 +935,7 @@ export function iniciarEnvioWhatsApp() {
  */
 export async function vigiarWhatsApp(): Promise<string[]> {
   const [rows] = await pool.query<any[]>(
-    // bm-sol: só o número do suporte (o das campanhas é vigiado pelo bm-crm)
-    "SELECT empresa_id, chave, valor FROM config WHERE grupo = 'whatsapp' AND chave = 'provedor' AND empresa_id IS NOT NULL",
+    "SELECT empresa_id, valor FROM config WHERE grupo = 'whatsapp' AND chave = 'provedor' AND empresa_id IS NOT NULL",
   );
   // Expediente (horário do banco = Brasília): seg a sex fora dos feriados nacionais, das 10h às 18h (antes das 10h as 2 h para trás pegam a noite)
   const [[h]] = await pool.query<any[]>(
@@ -1213,8 +953,7 @@ export async function vigiarWhatsApp(): Promise<string[]> {
       }
       // Sem apikey o número não está em uso: não vigia, para não encher o sino
       if (cfg?.provedor !== 'evolution' || !cfg.token_cifrado) return null;
-      const conta = contaWhats(r.chave);
-      const vigiar = () => vigiarInstancia(r.empresa_id, conta, cfg as ConfigWhats, expediente, silencioDesde);
+      const vigiar = () => vigiarInstancia(r.empresa_id, cfg as ConfigWhats, expediente, silencioDesde);
       // Falha pontual da Evolution (ex.: HTTP 500 do banco dela, conexão que caiu) não vira aviso: tenta de novo antes
       const aviso = await vigiar()
         .catch(() => esperar(5_000).then(vigiar))
@@ -1235,8 +974,8 @@ const RECRIAR =
   'Mande uma mensagem de teste para o número; se não aparecer no CRM, apague e crie de novo a instância no painel da Evolution (mesmo nome) e use Conectar WhatsApp.';
 
 /** O que há de errado com a instância (null = tudo certo); conexão caída e webhook sumido ela já tenta corrigir */
-async function vigiarInstancia(empresaId: number, conta: ContaWhats, cfg: ConfigWhats, expediente: boolean, silencioDesde: number): Promise<string | null> {
-  const c = await credenciais(empresaId, conta);
+async function vigiarInstancia(empresaId: number, cfg: ConfigWhats, expediente: boolean, silencioDesde: number): Promise<string | null> {
+  const c = await credenciais(empresaId);
   const inst = await instanciaEvolution(c);
   if ((inst.connectionStatus ?? inst.instance?.status) !== 'open') {
     return `o número está desconectado do WhatsApp. Em ${ONDE}, use Conectar WhatsApp e leia o QR Code.`;
@@ -1259,8 +998,6 @@ async function vigiarInstancia(empresaId: number, conta: ContaWhats, cfg: Config
     await cadastrarWebhook(c, url);
     return 'o recebimento de mensagens estava desligado na Evolution e foi religado automaticamente. Mensagens que chegaram nesse intervalo não entraram no CRM.';
   }
-  // ponytail: o tráfego é da empresa inteira (a tabela não guarda a conta), por isso só no número padrão
-  if (conta !== 'provedor') return null;
   const [[t]] = await pool.query<any[]>(
     `SELECT COUNT(IF(direcao = 'enviada' AND wa_id IS NOT NULL AND criado_em BETWEEN NOW() - INTERVAL 3 HOUR AND NOW() - INTERVAL 15 MINUTE, 1, NULL)) AS enviadas,
             COUNT(DISTINCT IF(direcao = 'enviada' AND wa_id IS NOT NULL AND criado_em BETWEEN NOW() - INTERVAL 3 HOUR AND NOW() - INTERVAL 15 MINUTE, telefone, NULL)) AS destinos,

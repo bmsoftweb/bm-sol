@@ -17,16 +17,13 @@ for (const k of ['ativo', 'menu', 'menu_texto']) assert.strictEqual(k in regrava
 // A chave vai cifrada e nunca volta para a tela; em branco mantém a gravada
 const gravada = prepararChatbot({ chave: 'minha-chave', vendedores: [30, 31] }, null);
 assert.ok(gravada.chave_cifrada && !gravada.chave_cifrada.includes('minha-chave'));
-// O revezamento é do cadastro de usuários: a lista antiga não é mais gravada nem devolvida
+// A lista antiga de vendedores (bm-crm) não é mais gravada nem devolvida
 assert.strictEqual('vendedores' in gravada, false);
 assert.strictEqual('vendedores' in chatbotPublica({ ...gravada, vendedores: [1] } as any), false);
 assert.strictEqual('chave_cifrada' in chatbotPublica(gravada), false);
 assert.strictEqual(chatbotPublica(gravada).chave_definida, true);
 const regravada = prepararChatbot({ ...gravada, chave: '' }, gravada);
 assert.strictEqual(regravada.chave_cifrada, gravada.chave_cifrada);
-
-// O ponteiro do revezamento é do servidor: a tela não muda
-assert.strictEqual(prepararChatbot({ ...gravada, chave: '', ultimo_vendedor_id: 99 }, { ...gravada, ultimo_vendedor_id: 30 }).ultimo_vendedor_id, 30);
 
 // Só modelos da lista
 assert.strictEqual(prepararChatbot({ ...gravada, chave: '', modelo: 'gemini-3.8-flash' }, gravada).modelo, 'gemini-3.8-flash');

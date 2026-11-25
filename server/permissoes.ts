@@ -12,16 +12,6 @@ const TELAS = ['conversas', 'painel_suporte', 'chamados_fila', 'chamados_ativos'
 /** Opções só de administrador: não entram nas permissões */
 const SO_ADMIN = ['usuarios', 'configuracoes'];
 
-/**
- * Opções que só existem no bm-crm. usuarios.permissoes é a mesma coluna nos dois sistemas: ao gravar aqui,
- * elas são preservadas como estavam (ver mesclarPermissoes), para o usuário não perder acesso no CRM.
- */
-const OPCOES_SO_CRM = [
-  'dashboard', 'kanban', 'prospeccao', 'negocios', 'historico_interacoes', 'propostas', 'pedidos', 'contratos',
-  'leads', 'segmentos', 'condicoes_pagamento', 'funis', 'campanhas', 'vendas_produtos', 'produtos', 'produtos_grupos',
-  'site_visitas',
-];
-
 /** Ids que podem ser gravados: as telas e os cadastros do menu (menos os só de administrador) */
 export const OPCOES_MENU = [...TELAS, ...RESOURCES.filter((r) => !r.oculto && r.name !== 'usuarios').map((r) => r.name)];
 
@@ -41,14 +31,6 @@ export function prepararPermissoes(valor: unknown): string[] | null {
   if (valor === null) return null;
   if (!Array.isArray(valor)) throw new Error('Permissões inválidas.');
   return [...new Set(valor.map(String))].filter((id) => OPCOES_MENU.includes(id));
-}
-
-/** Permissões novas do bm-sol + as do CRM que o usuário já tinha (null antes = tinha todas) */
-export function mesclarPermissoes(novas: string[] | null, atuais: unknown): string[] | null {
-  if (novas === null) return null;
-  const antes = lerPermissoes(atuais);
-  const doCrm = antes === null ? OPCOES_SO_CRM : antes.filter((id) => OPCOES_SO_CRM.includes(id));
-  return [...novas, ...doCrm];
 }
 
 /** O usuário acessa a opção do menu (mesma regra de podeAcessar em src/utils/menu.ts) */

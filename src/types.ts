@@ -14,8 +14,6 @@ export type FieldType =
   | 'imagem'
   /** Conjunto de campos definidos em Configurações, gravado como JSON */
   | 'personalizados'
-  /** Regras de segmentação de campanha (JSON) */
-  | 'criterios'
   /** Até 4 fotos no Vercel Blob (endereços em JSON) */
   | 'fotos'
   /** Cor #RRGGBB escolhida numa tabela de cores */
@@ -200,95 +198,10 @@ export interface DbConnectionStatus {
   tableCounts?: Record<string, number>;
 }
 
-// ------------------------------------------------------------
-// CRM
-// ------------------------------------------------------------
-export interface Etapa {
-  id: number;
-  funil_id?: number;
-  nome: string;
-  ordem: number;
-  probabilidade: string | number;
-  /** #RRGGBB: faixa no topo da coluna do Kanban */
-  cor?: string | null;
-}
-
-export interface Funil {
-  id: number;
-  nome: string;
-  etapas: Etapa[];
-}
-
-/** Card do Kanban: negócio aberto com a próxima atividade pendente */
-export interface CardNegocio {
-  id: number;
-  titulo: string;
-  valor: number;
-  moeda: string;
-  etapa_id: number;
-  pessoa_id: number | null;
-  pessoa_nome: string | null;
-  proprietario_id: number | null;
-  proprietario_nome: string | null;
-  data_fechamento_esperada: string | null;
-  data_ultimo_contato: string | null;
-  data_proximo_followup: string | null;
-  prox_id: number | null;
-  prox_assunto: string | null;
-  prox_tipo: string | null;
-  prox_data: string | null;
-  prox_hora: string | null;
-  pendentes: number;
-}
-
-export interface ItemDocumento {
-  /** Chave local da linha na tela (itens novos ainda não têm id no banco) */
-  chave: string;
-  produto_id: number;
-  produto_nome: string;
-  codigo_sku?: string | null;
-  unidade_medida?: string | null;
-  quantidade: string;
-  preco_unitario: string;
-  desconto: string;
-}
-
 export interface ProdutoBusca {
   id: number;
   codigo_sku: string | null;
   nome: string;
   preco_tabela: number;
   unidade_medida: string;
-}
-
-export interface FichaNegocio {
-  negocio: RegistroCrud;
-  etapas: Etapa[];
-  atividades: RegistroCrud[];
-  historico: RegistroCrud[];
-  propostas: RegistroCrud[];
-  pedidos: RegistroCrud[];
-  /** Usuários envolvidos no negócio, além do proprietário */
-  participantes: { id: number; nome: string }[];
-}
-
-export interface DashboardData {
-  abertos: { qtd: number; valor: number; ponderado: number };
-  mes: { ganhos_qtd: number; ganhos_valor: number; perdidos_qtd: number; perdidos_valor: number };
-  atividades: { atrasadas: number; hoje: number; negocios_sem_atividade: number };
-  porEtapa: { funil: string; etapa: string; qtd: number; valor: number }[];
-  propostas: { status: string; qtd: number; valor: number }[];
-  pedidos: { status: string; qtd: number; valor: number }[];
-  proximas: {
-    id: number;
-    assunto: string;
-    tipo: string;
-    data_vencimento: string;
-    hora_vencimento: string | null;
-    negocio_id: number | null;
-    negocio_titulo: string | null;
-    chamado_numero: number | null;
-  }[];
-  /** Pesquisa de satisfação do mês (nota de 1 a 5) */
-  satisfacao?: { media: number | null; qtd: number; porAtendente: { nome: string; media: number; qtd: number }[] };
 }

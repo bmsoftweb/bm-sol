@@ -2,6 +2,16 @@
 
 Mais recente primeiro. PATCH a cada envio ao GitHub; MAJOR/MINOR só quando pedido.
 
+## 0.0.7 — 2026-11-25
+
+- CRM fora do código: leads, negócios, funis e etapas, propostas, pedidos e contratos, campanhas (e o número das campanhas, "SAIR"), prospecção, segmentos, mensagens automáticas, Google Agenda, D4Sign e revezamento de vendedores, no servidor e nas telas.
+- Bot e Automação: o bot só passa a conversa para um humano; saem os nós Registrar lead e Registrar Prospecção e a condição "negócio aberto".
+- Conversas: sem lead e sem escolha de número; "Cadastrar" cria o cliente em Pessoas. Configurações › WhatsApp só com o número do suporte.
+- Pesquisas de satisfação: saem o filtro por segmento e o "Sai pelo". Pessoas sem Tipo e "Não receber campanhas"; Usuários sem Revezamento.
+- Sai o endpoint público `/api/publico/leads` (Agendar apresentação do site). Permissões gravadas sem preservar as do bm-crm.
+- Correção: volta a busca de produtos do Encerrar OS (`/api/crm/produtos`).
+- Script para apagar tabelas e colunas do CRM no bmsol: `sqls/remover_crm_bmsol.sql` (fora do código, rodado à parte).
+
 ## 0.0.6 — 2026-11-25
 
 - Banco próprio: o bm-sol passa a usar o banco `bmsol` (cópia do `crmweb`), no `.env`, na Vercel e no padrão do `server/db.ts`. As tabelas de CRM continuam por enquanto e saem depois.

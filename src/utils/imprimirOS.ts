@@ -1,7 +1,9 @@
 import { RegistroCrud } from '../types.js';
 import { formatCNPJ, formatDateBR, formatDateTimeBR, formatMoeda } from './formatters.js';
-import { esc } from './imprimirDocumento.js';
 import { fetchOS } from '../services/api.js';
+
+const esc = (v: unknown) =>
+  String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
 const TIPOS: Record<string, string> = {
   instalacao: 'Instalação',

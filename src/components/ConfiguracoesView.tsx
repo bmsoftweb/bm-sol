@@ -8,15 +8,12 @@ import { ConfigPesquisa } from './ConfigPesquisa';
 import { ConfigJornada } from './ConfigJornada';
 import { AbasRolagem } from './AbasRolagem';
 
-/**
- * Configurações da empresa, só as abas do suporte. Gravam na tabela `config` (empresa + grupo + chave), a mesma
- * do bm-crm: o que muda aqui vale também lá. As abas do CRM (vendas, campanhas, contratos...) ficam só no bm-crm.
- */
+/** Configurações da empresa. Gravam na tabela `config` (empresa + grupo + chave) */
 const ABAS = [
   {
     id: 'whatsapp',
     titulo: 'WhatsApp',
-    descricao: 'Número do WhatsApp do atendimento (o das campanhas fica no bm-crm).',
+    descricao: 'Número do WhatsApp do atendimento.',
   },
   {
     id: 'jornada',
@@ -83,7 +80,7 @@ export const ConfiguracoesView: React.FC<Props> = ({ usuario, onToast }) => {
           )}
 
           {aba === 'whatsapp' && <ConfigWhatsApp somenteLeitura={somenteLeitura} onToast={onToast} />}
-          {aba === 'jornada' && <ConfigJornada chave="jornada" somenteLeitura={somenteLeitura} onToast={onToast} />}
+          {aba === 'jornada' && <ConfigJornada somenteLeitura={somenteLeitura} onToast={onToast} />}
           {aba === 'chatbot' && (
             <>
               <ConfigChatbot somenteLeitura={somenteLeitura} onToast={onToast} />

@@ -162,8 +162,6 @@ export const STATUS_COLORS: Record<string, string> = {
   lido: ROXO,
   respondido: VERDE,
   nao_respondido: ROSA,
-  // Origem das atividades
-  google: ROXO,
 };
 
 export const STATUS_LABELS: Record<string, string> = {
@@ -220,19 +218,6 @@ export function diaUtilAnteriorIso(): string {
   return `${o.getFullYear()}-${String(o.getMonth() + 1).padStart(2, '0')}-${String(o.getDate()).padStart(2, '0')}`;
 }
 
-/**
- * Referência da proposta para as pessoas: o controle (ex.: 2026/001-01); sem controle, "nº 1 v1".
- * O número interno (numero_proposta) fica só para o sistema.
- */
-export function refProposta(p: { controle?: unknown; numero_proposta?: unknown; versao?: unknown }): string {
-  const c = String(p.controle ?? '').trim();
-  return c || `nº ${p.numero_proposta ?? '…'} v${p.versao ?? 1}`;
-}
-
-/** Referência da proposta usável em nome de arquivo (sem barras) */
-export const refPropostaArquivo = (p: { controle?: unknown; numero_proposta?: unknown; versao?: unknown }) =>
-  refProposta(p).replace(/^nº /, '').replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, '-');
-
 /** DDDs que existem no Brasil (Anatel) */
 const DDDS = new Set([
   11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 24, 27, 28, 31, 32, 33, 34, 35, 37, 38, 41, 42, 43, 44, 45, 46, 47, 48, 49, 51, 53, 54, 55,
@@ -275,51 +260,4 @@ export function lerData(texto: string): string | null {
   const dt = new Date(a, m - 1, d);
   if (dt.getFullYear() !== a || dt.getMonth() !== m - 1 || dt.getDate() !== d) return null;
   return `${a}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-}
-
-const SQL_QUEBRA = /^(select|from|where|group\s+by|order\s+by|having|limit|union(\s+all)?|(left|right|inner|cross)(\s+outer)?\s+join|join)\b/i;
-const SQL_RECUO = /^(and|or|on)\b/i;
-
-/**
- * Formata um SELECT para leitura (Campanhas › Selecionar com IA): uma cláusula por linha, AND/OR/ON recuados e as
- * subconsultas mais recuadas. Textos entre aspas ficam como estão.
- */
-export function formatarSql(sql: string): string {
-  let out = '';
-  let nivel = 0;
-  const pular = (texto: string, recuo: number) => {
-    out = out.trimEnd();
-    if (out) out += '\n' + '  '.repeat(recuo);
-    out += texto.toUpperCase().replace(/\s+/g, ' ');
-  };
-  for (let i = 0; i < sql.length; ) {
-    const ch = sql[i];
-    if (ch === "'") {
-      let j = i + 1;
-      while (j < sql.length && !(sql[j] === "'" && sql[j + 1] !== "'")) j += sql[j] === "'" ? 2 : 1;
-      out += sql.slice(i, j + 1);
-      i = j + 1;
-      continue;
-    }
-    if (/\s/.test(ch)) {
-      if (out && !/\s$/.test(out)) out += ' ';
-      i++;
-      continue;
-    }
-    const inicioPalavra = i === 0 || !/[\w.]/.test(sql[i - 1]);
-    const resto = sql.slice(i, i + 30);
-    const q = inicioPalavra && SQL_QUEBRA.exec(resto);
-    const r = !q && inicioPalavra && SQL_RECUO.exec(resto);
-    if (q || r) {
-      const m = (q || r) as RegExpExecArray;
-      pular(m[0], nivel * 2 + (r ? 1 : 0));
-      i += m[0].length;
-      continue;
-    }
-    if (ch === '(') nivel++;
-    if (ch === ')') nivel = Math.max(0, nivel - 1);
-    out += ch;
-    i++;
-  }
-  return out.trim();
 }

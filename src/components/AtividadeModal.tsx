@@ -13,7 +13,6 @@ import { ParticipantesNegocio } from './ParticipantesNegocio';
 
 interface AtividadeModalProps {
   /** Vínculos da atividade (normalmente os do negócio) */
-  negocioId?: Id | null;
   pessoaId?: Id | null;
   /** Tarefa de um chamado do suporte: grava ligada a ele (o cliente vem do chamado) */
   chamadoId?: number | null;
@@ -26,7 +25,7 @@ interface AtividadeModalProps {
 }
 
 /** Agendamento de follow-up (ligação, reunião, tarefa...) vinculado ao negócio */
-export const AtividadeModal: React.FC<AtividadeModalProps> = ({ negocioId, pessoaId, chamadoId, executorPadraoId, contexto, onFechar, onGravada }) => {
+export const AtividadeModal: React.FC<AtividadeModalProps> = ({ pessoaId, chamadoId, executorPadraoId, contexto, onFechar, onGravada }) => {
   const [tipo, setTipo] = useState(chamadoId ? 'tarefa' : 'ligacao');
   const [assunto, setAssunto] = useState('');
   const [data, setData] = useState(hojeIso());
@@ -76,7 +75,7 @@ export const AtividadeModal: React.FC<AtividadeModalProps> = ({ negocioId, pesso
         envolvidos: envolvidos.filter((id) => String(id) !== executor) as any,
       };
       if (chamadoId) await criarTarefaChamado(chamadoId, dados);
-      else await createRecord('atividades', { ...dados, negocio_id: negocioId || null, pessoa_id: pessoaId || null });
+      else await createRecord('atividades', { ...dados, pessoa_id: pessoaId || null });
       onGravada();
     } catch (err: any) {
       setErro(err.message || 'Não foi possível agendar a atividade.');

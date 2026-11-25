@@ -3,7 +3,7 @@ import { pool } from './db.js';
 import { aposGravar } from './regras.js';
 import { conversarIa, lerChatbot, marcarEvento, ouvirAudio, temChave } from './chatbot.js';
 import { gravarMensagem as mensagemChamado, NOTA_LIGACAO } from './chamados.js';
-import { baixarAnexo } from './anexos.js';
+
 import { verificarFim } from './atividadeBot.js';
 import { notificar } from './notificacoes.js';
 
@@ -31,7 +31,7 @@ interface Fonte {
   atendente: string | null;
   /** Conclusão que o técnico escreveu ao encerrar (chamado): o que ele der como resolvido não vira tarefa */
   conclusao?: string | null;
-  vinculos: { negocio_id?: number | null; chamado_id?: number | null };
+  vinculos: { chamado_id?: number | null };
   /** Onde anotar o resultado (linha na conversa do WhatsApp ou no chamado) */
   anotar: (texto: string) => Promise<unknown>;
 }
@@ -136,12 +136,11 @@ Responda só com JSON, sem texto em volta:
     const rotulo = TIPOS[p.tipo] ?? 'Pendência do cliente';
     const para = usuario ? usuario.nome : departamento ? `departamento ${departamento.nome}` : executor ? `${executor.nome} (sem responsável identificado)` : 'qualquer pessoa';
     const [ins] = await pool.query<any>(
-      `INSERT INTO atividades (empresa_id, pessoa_id, negocio_id, chamado_id, assunto, tipo, data_vencimento, hora_vencimento, lembrete_para, executor_id, departamento_id, observacao)
-       VALUES (?, ?, ?, ?, ?, 'tarefa', CURDATE(), TIME_FORMAT(CURTIME(), '%H:%i:00'), 'nenhum', ?, ?, ?)`,
+      `INSERT INTO atividades (empresa_id, pessoa_id, chamado_id, assunto, tipo, data_vencimento, hora_vencimento, lembrete_para, executor_id, departamento_id, observacao)
+       VALUES (?, ?, ?, ?, 'tarefa', CURDATE(), TIME_FORMAT(CURTIME(), '%H:%i:00'), 'nenhum', ?, ?, ?)`,
       [
         f.empresaId,
         f.pessoaId,
-        f.vinculos.negocio_id ?? null,
         f.vinculos.chamado_id ?? null,
         `${rotulo}: ${descricao}`.slice(0, 255),
         executor?.id ?? null,
@@ -303,7 +302,7 @@ Não invente nada que não foi dito na ligação.`,
 export function analisarConversaBot(conversaId: number) {
   emSegundoPlano(`Bot, conversa ${conversaId}`, async () => {
     const [c] = await pool.query<any[]>(
-      `SELECT c.*, a.empresa_id, a.assunto, a.negocio_id, a.chamado_id FROM atividade_conversas c JOIN atividades a ON a.id = c.atividade_id WHERE c.id = ?`,
+      `SELECT c.*, a.empresa_id, a.assunto, a.chamado_id FROM atividade_conversas c JOIN atividades a ON a.id = c.atividade_id WHERE c.id = ?`,
       [conversaId],
     );
     const conv = c[0];
@@ -315,7 +314,7 @@ export function analisarConversaBot(conversaId: number) {
       origem: `conversa do assistente virtual sobre "${conv.assunto}"`,
       conversa: ms.map((m) => `${m.direcao === 'recebida' ? 'Cliente' : 'Assistente virtual'}: ${m.texto}`).join('\n'),
       atendente: null,
-      vinculos: { negocio_id: conv.negocio_id, chamado_id: conv.chamado_id },
+      vinculos: { chamado_id: conv.chamado_id },
       anotar: (t) => marcarEvento(conv.empresa_id, conv.destino, t, null),
     };
     const tarefas = await analisar(fonte);
@@ -329,4 +328,11 @@ export function analisarConversaBot(conversaId: number) {
     }
     return null;
   });
+}
+
+/** Arquivo do Vercel Blob (gravação da ligação) */
+async function baixarAnexo(url: string): Promise<Buffer> {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`Não foi possível ler o arquivo do storage (HTTP ${r.status}).`);
+  return Buffer.from(await r.arrayBuffer());
 }

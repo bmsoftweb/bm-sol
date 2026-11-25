@@ -4,12 +4,8 @@ import {
   FiltroAvancado,
   RegistroCrud,
   OpcaoRef,
-  DashboardData,
   Usuario,
   EmpresaSessao,
-  Funil,
-  CardNegocio,
-  FichaNegocio,
   ProdutoBusca,
   Id,
   CampoPersonalizado,
@@ -146,7 +142,7 @@ export const getRecord = (resource: string, id: Id): Promise<RegistroCrud> =>
 /** Atividades gravadas por este usuário neste navegador: não geram o aviso de "atividade para você" */
 export const atividadesGravadasAqui = new Set<number>();
 
-// Gravar muda a lista do recurso: os combos dele são relidos (ex.: segmento criado na Prospecção)
+// Gravar muda a lista do recurso: os combos dele são relidos
 /** aviso: o que o servidor fez a mais ao gravar (ex.: campanha gerou os disparos) */
 export const createRecord = (resource: string, payload: RegistroCrud): Promise<{ success: boolean; id: string; aviso?: string | null }> =>
   enviar('POST', `/api/crud/${resource}`, payload).then((r: any) => {
@@ -205,9 +201,9 @@ export function invalidateOptions(resource?: string) {
   }
 }
 
-/** Usuários envolvidos no negócio (ids e nomes) */
-export const fetchParticipantes = (id: Id, recurso: 'negocios' | 'atividades' = 'negocios'): Promise<{ id: number; nome: string }[]> =>
-  get(`/api/${recurso}/${id}/${recurso === 'atividades' ? 'envolvidos' : 'participantes'}`).then((l) => {
+/** Usuários envolvidos na atividade (ids e nomes) */
+export const fetchParticipantes = (id: Id): Promise<{ id: number; nome: string }[]> =>
+  get(`/api/atividades/${id}/envolvidos`).then((l) => {
     if (!Array.isArray(l)) throw new Error('Não foi possível carregar os envolvidos: resposta inesperada do servidor.');
     return l;
   });
@@ -253,43 +249,6 @@ export function fetchCamposPersonalizados(): Promise<CampoPersonalizado[]> {
   return camposPessoaCache;
 }
 
-// ------------------------------------------------------------
-// Campanhas
-// ------------------------------------------------------------
-export interface RegraCriterio {
-  regra: string;
-  rotulo: string;
-  valor: 'numero' | 'texto' | 'sim_nao' | 'tipo_pessoa' | 'segmento' | 'lista' | 'publico';
-  /** Campo personalizado decimal: casas do valor */
-  casas?: number;
-  /** Campo personalizado de lista: as opções */
-  opcoes?: string[];
-}
-let regrasCache: Promise<RegraCriterio[]> | null = null;
-/** Botão "Testar" dos critérios da campanha: total do público e as 50 primeiras pessoas */
-export interface TesteCriterios {
-  total: number;
-  pessoas: { id: number; nome: string; tipo: string; cod_integracao: string | null; telefone: string | null; email: string | null; cidade: string | null }[];
-  /** Seleção com IA: o comando que rodou no banco */
-  sqlExecutado?: string;
-}
-export const testarCriterios = (criterios: unknown): Promise<TesteCriterios> => enviar('POST', '/api/campanhas/criterios/testar', { criterios });
-
-/** Campanhas › "Selecionar com IA": a IA monta o SQL do público a partir do pedido (server/selecaoIa.ts) */
-export interface SelecaoIa {
-  modo: 'ia';
-  pedido: string;
-  sql: string;
-  explicacao: string;
-}
-export const gerarSelecaoIa = (pedido: string): Promise<SelecaoIa & { total: number }> => enviar('POST', '/api/campanhas/ia/gerar', { pedido });
-
-export const fetchRegrasCriterio = (): Promise<RegraCriterio[]> =>
-  (regrasCache ??= get('/api/campanhas/regras').catch((err: Error) => {
-    regrasCache = null;
-    throw err;
-  }));
-
 /** Painel de Suporte: indicadores do período e do anterior equivalente (server/painelSuporte.ts) */
 export interface ResumoSuporte {
   chamados: { abertos: number; encerrados: number; min_assumir: number | null; min_resolver: number | null };
@@ -320,27 +279,12 @@ export interface PainelSuporteDados {
 }
 export const painelSuporte = (periodo: string): Promise<PainelSuporteDados> => get(`/api/suporte/painel?periodo=${encodeURIComponent(periodo)}`);
 
-/** Trava do contrato assinado: só muda por aditivo, depois de liberado por um administrador */
-export interface TravaContrato {
-  assinado: boolean;
-  liberado_em: string | null;
-  liberado_por: string | null;
-  pode_liberar: boolean;
-  /** Assinado e não liberado para aditivo */
-  travado: boolean;
-  /** Campos do contrato que continuam editáveis quando travado */
-  campos_livres: string[];
-}
-export const travaContrato = (id: Id): Promise<TravaContrato> => get(`/api/contratos/${encodeURIComponent(String(id))}/trava`);
-
 // ------------------------------------------------------------
 // Conversas do WhatsApp
 // ------------------------------------------------------------
 export interface ConversaResumo {
   telefone: string;
   pessoa_id: number | null;
-  /** Lead dono do número (quando não há pessoa) */
-  lead_id?: number | null;
   nome: string | null;
   /** Contato da pessoa dono do número (pessoas_contatos), com departamento ou cargo */
   contato_id: number | null;
@@ -365,8 +309,6 @@ export interface ConversaResumo {
   aguardando_desde: string | null;
   /** 1ª mensagem do cliente no atendimento atual (depois do último encerramento) */
   chegou_em: string | null;
-  /** Número por onde a conversa entrou: provedor (padrão) ou campanhas */
-  conta: 'provedor' | 'campanhas';
   /** Técnico padrão do cliente (pessoas.tecnico_padrao_id) */
   tecnico_padrao_nome: string | null;
   /** Pausada por quem atendia: voltou para a Fila de Chamados */
@@ -383,7 +325,6 @@ export interface MensagemWhatsApp {
   arquivo_nome: string | null;
   situacao: 'pendente' | 'enviada' | 'entregue' | 'lida' | 'falhou' | 'recebida';
   usuario_nome: string | null;
-  campanha: boolean;
   /** Mensagem automática (Configurações › Mensagens automáticas) */
   automatica: boolean;
   /** Resposta do chatbot */
@@ -407,8 +348,6 @@ export const fetchConversa = (
   telefone: string,
 ): Promise<{
   pessoa: { id: number; nome: string } | null;
-  /** Sem pessoa: o lead com esse número (Marketing › Leads) */
-  lead: { id: number; nome: string } | null;
   contato: { id: number; nome: string; cargo: string | null; departamento: string | null } | null;
   /** Com o chatbot ligado: quem atende a conversa (null = chatbot desligado) */
   atendimento: 'bot' | 'humano' | null;
@@ -426,10 +365,6 @@ export const fetchConversa = (
   sou_admin: boolean;
   /** Bot ou jornada atendem este número (há para onde devolver) */
   com_bot: boolean;
-  /** Número por onde o cliente escreveu por último: a resposta já vem com ele escolhido */
-  conta: 'provedor' | 'campanhas';
-  /** Há WhatsApp das campanhas configurado (a tela mostra a escolha do número) */
-  tem_campanhas: boolean;
   /** Há atendimento em andamento (o botão Encerrar aparece) */
   encerravel: boolean;
   nome_contato: string | null;
@@ -452,17 +387,14 @@ export const responderConversa = (
   arquivo?: ArquivoConversa | null,
   /** Mensagem da conversa que esta responde (aparece citada no WhatsApp do cliente) */
   respostaDe?: number | null,
-  /** Número que envia: o principal ou o das campanhas */
-  conta?: 'provedor' | 'campanhas',
 ): Promise<{ success: boolean; telefone: string; atividade_concluida: boolean }> =>
   enviar('POST', `/api/whatsapp/conversas/${encodeURIComponent(telefone)}`, {
     texto,
     atividade_id: atividadeId ?? null,
     arquivo: arquivo ?? undefined,
     resposta_de: respostaDe ?? null,
-    conta,
   });
-/** Conversa de uma atividade WhatsApp: o número do cliente (pessoa da atividade ou do negócio) */
+/** Conversa de uma atividade WhatsApp: o número do cliente (pessoa da atividade) */
 export const fetchConversaDaAtividade = (
   id: Id,
 ): Promise<{ telefone: string; nome: string | null; atividade: { id: number; assunto: string; concluida: boolean } }> =>
@@ -493,7 +425,7 @@ export const encerrarConversa = (telefone: string): Promise<{ success: boolean }
   enviar('POST', `/api/whatsapp/conversas/${encodeURIComponent(telefone)}/encerrar`);
 /** Tira de Aguardando a mensagem que não pedia atendimento (sem pesquisa, não conta como atendimento) */
 /** Procura de novo o dono do número depois de corrigir o cadastro (server/conversas.ts) */
-export const religarConversa = (telefone: string): Promise<{ success: boolean; pessoa_id: number | null; lead_id: number | null }> =>
+export const religarConversa = (telefone: string): Promise<{ success: boolean; pessoa_id: number | null }> =>
   enviar('POST', `/api/whatsapp/conversas/${encodeURIComponent(telefone)}/religar`);
 export const descartarConversa = (telefone: string): Promise<{ success: boolean }> =>
   enviar('POST', `/api/whatsapp/conversas/${encodeURIComponent(telefone)}/descartar`);
@@ -840,7 +772,6 @@ export interface FiltroPesquisa {
   origens?: string[];
   notas?: number[];
   sem_nota?: boolean;
-  segmentos?: number[];
   pessoas?: number[];
   atendentes?: number[];
   departamentos?: number[];
@@ -896,8 +827,6 @@ export interface Pesquisa {
   descricao: string;
   objetivo: string | null;
   canal: CanalPesquisa;
-  /** WhatsApp por onde a pesquisa sai (canal whatsapp) */
-  conta: 'provedor' | 'campanhas';
   filtro: FiltroPesquisa;
   quantidade: number;
   total_filtrados: number | null;
@@ -906,7 +835,7 @@ export interface Pesquisa {
   itens: ItemPesquisa[];
 }
 
-export type DadosPesquisa = Pick<Pesquisa, 'descricao' | 'objetivo' | 'canal' | 'conta' | 'filtro' | 'quantidade' | 'responsavel_id'>;
+export type DadosPesquisa = Pick<Pesquisa, 'descricao' | 'objetivo' | 'canal' | 'filtro' | 'quantidade' | 'responsavel_id'>;
 
 export const fetchPesquisa = (id: number): Promise<Pesquisa> => get(`/api/pesquisas-satisfacao/${id}`);
 export const criarPesquisa = (d: DadosPesquisa): Promise<{ id: number }> => enviar('POST', '/api/pesquisas-satisfacao', d);
@@ -929,12 +858,6 @@ export const fetchItemDaAtividade = (
 export const buscarPessoasPesquisa = (q: string): Promise<{ id: number; nome: string }[]> => get(`/api/pesquisas-satisfacao-pessoas?q=${encodeURIComponent(q)}`);
 
 
-// ------------------------------------------------------------
-// CRM: Kanban, ficha do negócio, propostas e pedidos
-// ------------------------------------------------------------
-export const fetchFunis = (): Promise<Funil[]> => get('/api/crm/funis');
-
-
 export const salvarConfig = (grupo: string, chave: string, valor: unknown): Promise<{ success: boolean }> =>
   enviar('PUT', `/api/config/${grupo}/${chave}`, { valor });
 
@@ -952,31 +875,28 @@ export async function fetchArquivoJornada(id: number): Promise<string> {
 
 
 /** Conecta e autentica no SMTP gravado em Configurações › E-mail, sem enviar nada */
-/** Testa a conta de e-mail gravada: smtp = comercial, smtp_suporte = suporte */
+/** Testa a conta de e-mail gravada: smtp = geral, smtp_suporte = suporte */
 export const testarSmtp = (chave: 'smtp' | 'smtp_suporte' = 'smtp'): Promise<{ success: boolean }> => enviar('POST', `/api/config/email/${chave}/testar`);
 
 
 /** Consulta no provedor se o número do WhatsApp gravado em Configurações está conectado */
-/** Conta do WhatsApp: a padrão ou a das campanhas (Configurações › WhatsApp) */
-export type ContaWhats = 'provedor' | 'campanhas';
-
-export const testarWhatsApp = (conta: ContaWhats = 'provedor'): Promise<{ conectado: boolean; numero?: string; mensagem: string }> =>
-  enviar('POST', `/api/config/whatsapp/${conta}/testar`);
+export const testarWhatsApp = (): Promise<{ conectado: boolean; numero?: string; mensagem: string }> =>
+  enviar('POST', '/api/config/whatsapp/provedor/testar');
 
 
 /** QR Code para conectar o número do WhatsApp gravado; conectado: true se já estiver */
-export const conectarWhatsApp = (conta: ContaWhats = 'provedor'): Promise<{ conectado: boolean; qrcode?: string }> =>
-  enviar('POST', `/api/config/whatsapp/${conta}/conectar`);
+export const conectarWhatsApp = (): Promise<{ conectado: boolean; qrcode?: string }> =>
+  enviar('POST', '/api/config/whatsapp/provedor/conectar');
 
 
 /** Liga o recebimento de mensagens: a Evolution passa a avisar o CRM neste endereço (origem) */
-export const ativarRecebimentoWhatsApp = (origem: string, conta: ContaWhats = 'provedor'): Promise<{ origem: string; em: string }> =>
-  enviar('POST', `/api/config/whatsapp/${conta}/receber`, { origem });
+export const ativarRecebimentoWhatsApp = (origem: string): Promise<{ origem: string; em: string }> =>
+  enviar('POST', '/api/config/whatsapp/provedor/receber', { origem });
 
 
 /** Desconecta o número do WhatsApp gravado (depois é preciso ler outro QR Code) */
-export const desconectarWhatsApp = (conta: ContaWhats = 'provedor'): Promise<{ success: boolean }> =>
-  enviar('POST', `/api/config/whatsapp/${conta}/desconectar`);
+export const desconectarWhatsApp = (): Promise<{ success: boolean }> =>
+  enviar('POST', '/api/config/whatsapp/provedor/desconectar');
 
 /** Pergunta curta à IA (Gemini, Claude ou DeepSeek) com a chave e o modelo gravados em Configurações › IA */
 export const testarChatbot = (): Promise<{ mensagem: string }> => enviar('POST', '/api/config/whatsapp/chatbot/testar');

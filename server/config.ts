@@ -1,37 +1,26 @@
 import { Router, Request, Response } from 'express';
 import { pool } from './db.js';
 import { configSmtpPublica, prepararConfigSmtp, testarSmtp } from './email.js';
-import { conferirInstanciaUnica, configWhatsPublica, contaWhats, prepararConfigWhats, testarWhatsApp, conectarWhatsApp, desconectarWhatsApp, ativarRecebimento } from './whatsapp.js';
-import { automaticasPublica, prepararAutomaticas } from './automaticas.js';
+import { conferirInstanciaUnica, configWhatsPublica, prepararConfigWhats, testarWhatsApp, conectarWhatsApp, desconectarWhatsApp, ativarRecebimento } from './whatsapp.js';
 import { chatbotPublica, prepararChatbot, testarChatbot } from './chatbot.js';
 import { jornadaPublica, prepararJornada } from './jornada.js';
 import { exigirAcesso } from './permissoes.js';
 import { pesquisaPublica, prepararPesquisa } from './pesquisa.js';
-import { cadastrarWebhookCofre, configD4Publica, prepararConfigD4, verificarConta } from './d4sign.js';
-import { configProspeccaoPublica, prepararConfigProspeccao } from './prospeccao.js';
 
 /**
  * Configurações da empresa (tabela config).
  *
- * Cada linha é `empresa_id + grupo + chave = valor`, com o valor em JSON. A tela de
- * Configurações tem uma aba por grupo: "pessoas" (campos_personalizados), "email" (smtp),
- * "whatsapp" (provedor), "vendas" (retorno_envio), "assinatura" (d4sign), "prospeccao" (google) e "contratos" (modelo). Senhas e tokens são gravados cifrados e nunca voltam para o
- * navegador (server/email.ts, server/whatsapp.ts).
+ * Cada linha é `empresa_id + grupo + chave = valor`, com o valor em JSON: "pessoas" (campos_personalizados),
+ * "email" (smtp, smtp_suporte) e "whatsapp" (provedor, chatbot, jornada, pesquisa). Senhas e tokens são
+ * gravados cifrados e nunca voltam para o navegador (server/email.ts, server/whatsapp.ts).
  */
 
 /** Grupos e chaves aceitos: o que não está aqui não entra no banco */
 const CHAVES: Record<string, string[]> = {
   pessoas: ['campos_personalizados'],
-  // smtp = conta comercial (propostas, pedidos, contratos, campanhas); smtp_suporte = conta do suporte (pesquisa de satisfação, chamados)
+  // smtp_suporte = conta do suporte (pesquisa de satisfação, Bot das atividades); smtp = a conta geral, usada quando ela está em branco
   email: ['smtp', 'smtp_suporte'],
-  // campanhas: outro número só para as campanhas (mesma estrutura da provedor)
-  // jornada_campanhas: a Automação de quem responde no WhatsApp das campanhas (mesma estrutura da jornada)
-  whatsapp: ['provedor', 'campanhas', 'automaticas', 'chatbot', 'jornada', 'jornada_campanhas', 'pesquisa'],
-  // { ativo: boolean } — tarefa "Retorno Envio" ao enviar proposta ou pedido (sem configuração: ligado)
-  vendas: ['retorno_envio', 'privacidade_envio'],
-  assinatura: ['d4sign'],
-  // Chave da Google Places API usada na tela Prospecção
-  prospeccao: ['google'],
+  whatsapp: ['provedor', 'chatbot', 'jornada', 'pesquisa'],
 };
 
 /**
@@ -42,16 +31,10 @@ const COM_SEGREDO: Record<string, { preparar: (valor: any, anterior: any) => any
   'email.smtp': { preparar: prepararConfigSmtp, publica: configSmtpPublica },
   'email.smtp_suporte': { preparar: prepararConfigSmtp, publica: configSmtpPublica },
   'whatsapp.provedor': { preparar: prepararConfigWhats, publica: configWhatsPublica },
-  'whatsapp.campanhas': { preparar: prepararConfigWhats, publica: configWhatsPublica },
-  'whatsapp.automaticas': { preparar: prepararAutomaticas, publica: automaticasPublica },
   'whatsapp.chatbot': { preparar: prepararChatbot, publica: chatbotPublica },
   // Funções chamadas na hora (jornada.ts importa este módulo)
   'whatsapp.jornada': { preparar: (v, a) => prepararJornada(v, a), publica: (v) => jornadaPublica(v) },
-  'whatsapp.jornada_campanhas': { preparar: (v, a) => prepararJornada(v, a), publica: (v) => jornadaPublica(v) },
   'whatsapp.pesquisa': { preparar: (v) => prepararPesquisa(v), publica: (v) => pesquisaPublica(v) },
-  'assinatura.d4sign': { preparar: prepararConfigD4, publica: configD4Publica },
-  // Funções chamadas na hora (prospeccao.ts importa este módulo)
-  'prospeccao.google': { preparar: (v, a) => prepararConfigProspeccao(v, a), publica: (v) => configProspeccaoPublica(v) },
 };
 export const somenteAdmin = (res: Response) => {
   if (res.locals.usuario?.tipo !== 'admin') {
@@ -115,7 +98,7 @@ export function createConfigRouter(): Router {
       const empresaId = String(res.locals.empresaId);
       const segredo = COM_SEGREDO[`${grupo}.${chave}`];
       const valor = segredo ? segredo.preparar(req.body?.valor, await lerConfig(empresaId, grupo, chave)) : req.body?.valor;
-      if (grupo === 'whatsapp' && (chave === 'provedor' || chave === 'campanhas')) await conferirInstanciaUnica(empresaId, valor, contaWhats(chave));
+      if (grupo === 'whatsapp' && chave === 'provedor') await conferirInstanciaUnica(empresaId, valor);
       const texto = JSON.stringify(valor ?? null);
       if (texto.length > TAMANHO_MAX) {
         return res.status(413).json({ error: 'Configuração grande demais.' });
@@ -141,7 +124,7 @@ export function createConfigRouter(): Router {
     }
   });
 
-  /** Conecta e autentica no SMTP gravado (conta comercial ou do suporte), sem enviar e-mail */
+  /** Conecta e autentica no SMTP gravado (conta geral ou do suporte), sem enviar e-mail */
   router.post('/config/email/:chave/testar', async (req: Request, res: Response) => {
     try {
       somenteAdmin(res);
@@ -152,41 +135,21 @@ export function createConfigRouter(): Router {
     }
   });
 
-  /** Testa as chaves da D4Sign gravadas: devolve os cofres da conta, para escolher o dos contratos */
-  router.post('/config/assinatura/d4sign/testar', async (_req: Request, res: Response) => {
-    try {
-      somenteAdmin(res);
-      res.json({ success: true, ...(await verificarConta(String(res.locals.empresaId))) });
-    } catch (err: any) {
-      res.status(err.status || 400).json({ error: err.message });
-    }
-  });
-
-  /** Webhook 2.0: cadastra o endereço do CRM no cofre dos contratos, na D4Sign */
-  router.post('/config/assinatura/d4sign/webhook', async (_req: Request, res: Response) => {
-    try {
-      somenteAdmin(res);
-      res.json({ success: true, ...(await cadastrarWebhookCofre(String(res.locals.empresaId))) });
-    } catch (err: any) {
-      res.status(err.status || 400).json({ error: err.message });
-    }
-  });
-
   /** Consulta no provedor se o número do WhatsApp gravado está conectado */
-  router.post('/config/whatsapp/:conta(provedor|campanhas)/testar', async (req: Request, res: Response) => {
+  router.post('/config/whatsapp/provedor/testar', async (req: Request, res: Response) => {
     try {
       somenteAdmin(res);
-      res.json({ success: true, ...(await testarWhatsApp(String(res.locals.empresaId), contaWhats(req.params.conta))) });
+      res.json({ success: true, ...(await testarWhatsApp(String(res.locals.empresaId))) });
     } catch (err: any) {
       res.status(err.status || 400).json({ error: err.message });
     }
   });
 
   /** QR Code para conectar o número do WhatsApp gravado (ou "já conectado") */
-  router.post('/config/whatsapp/:conta(provedor|campanhas)/conectar', async (req: Request, res: Response) => {
+  router.post('/config/whatsapp/provedor/conectar', async (req: Request, res: Response) => {
     try {
       somenteAdmin(res);
-      res.json({ success: true, ...(await conectarWhatsApp(String(res.locals.empresaId), contaWhats(req.params.conta))) });
+      res.json({ success: true, ...(await conectarWhatsApp(String(res.locals.empresaId))) });
     } catch (err: any) {
       res.status(err.status || 400).json({ error: err.message });
     }
@@ -203,20 +166,20 @@ export function createConfigRouter(): Router {
   });
 
   /** Cadastra na Evolution o endereço do CRM para receber mensagens e avisos de entrega/leitura */
-  router.post('/config/whatsapp/:conta(provedor|campanhas)/receber', async (req: Request, res: Response) => {
+  router.post('/config/whatsapp/provedor/receber', async (req: Request, res: Response) => {
     try {
       somenteAdmin(res);
-      res.json({ success: true, ...(await ativarRecebimento(String(res.locals.empresaId), String(req.body?.origem ?? ''), contaWhats(req.params.conta))) });
+      res.json({ success: true, ...(await ativarRecebimento(String(res.locals.empresaId), String(req.body?.origem ?? ''))) });
     } catch (err: any) {
       res.status(err.status || 400).json({ error: err.message });
     }
   });
 
   /** Desconecta o número do WhatsApp gravado (logout na instância) */
-  router.post('/config/whatsapp/:conta(provedor|campanhas)/desconectar', async (req: Request, res: Response) => {
+  router.post('/config/whatsapp/provedor/desconectar', async (req: Request, res: Response) => {
     try {
       somenteAdmin(res);
-      await desconectarWhatsApp(String(res.locals.empresaId), contaWhats(req.params.conta));
+      await desconectarWhatsApp(String(res.locals.empresaId));
       res.json({ success: true });
     } catch (err: any) {
       res.status(err.status || 400).json({ error: err.message });

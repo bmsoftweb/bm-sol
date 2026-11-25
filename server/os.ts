@@ -144,22 +144,21 @@ async function historicoDos(empresaId: string, pessoas: number[]): Promise<Recor
 export const ATIVIDADES_COM_OS = ['visita', 'reuniao_externa'];
 
 /**
- * OS com os dados da atividade. Cliente: o contato da atividade, senão o do negócio ou o do chamado.
+ * OS com os dados da atividade. Cliente: o contato da atividade, senão o do chamado.
  * Técnico: quem executa, senão quem gerou.
  */
 export async function criarOSDaAtividade(atividadeId: string | number, empresaId: string | number, usuarioId: number): Promise<{ id: number; numero: number }> {
   const [r] = await pool.query<any[]>(
     `SELECT a.assunto, a.observacao, a.executor_id, a.chamado_id, DATE_FORMAT(a.data_vencimento, '%Y-%m-%d') AS data,
-            TIME_FORMAT(a.hora_vencimento, '%H:%i') AS hora, COALESCE(a.pessoa_id, n.pessoa_id, c.pessoa_id) AS pessoa_id
+            TIME_FORMAT(a.hora_vencimento, '%H:%i') AS hora, COALESCE(a.pessoa_id, c.pessoa_id) AS pessoa_id
        FROM atividades a
-       LEFT JOIN negocios n ON n.id = a.negocio_id
        LEFT JOIN chamados c ON c.id = a.chamado_id
       WHERE a.id = ? AND a.empresa_id = ?`,
     [atividadeId, empresaId],
   );
   const a = r[0];
   if (!a) throw erro(404, 'Atividade não encontrada.');
-  if (!a.pessoa_id) throw erro(400, 'A atividade não tem contato (nem pelo negócio ou chamado): informe o contato antes de gerar a OS.');
+  if (!a.pessoa_id) throw erro(400, 'A atividade não tem contato (nem pelo chamado): informe o contato antes de gerar a OS.');
   // Mesma regra do formulário da OS: o fim previsto é o início + 2 h (sem passar da meia-noite)
   let horaFim: string | null = null;
   if (a.hora) {

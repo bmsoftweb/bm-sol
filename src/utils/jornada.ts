@@ -14,12 +14,10 @@ import {
   MessageSquare,
   Network,
   Play,
-  Target,
-  UserPlus,
 } from 'lucide-react';
 
 /** Jornada de atendimento: o mesmo formato de server/jornada.ts */
-export type TipoNo = 'inicio' | 'mensagem' | 'imagem' | 'menu' | 'pergunta' | 'condicao' | 'case' | 'esperar' | 'api' | 'ia' | 'iaex' | 'lead' | 'prospeccao' | 'tarefa' | 'departamento' | 'fim';
+export type TipoNo = 'inicio' | 'mensagem' | 'imagem' | 'menu' | 'pergunta' | 'condicao' | 'case' | 'esperar' | 'api' | 'ia' | 'iaex' | 'tarefa' | 'departamento' | 'fim';
 
 export interface NoJornada {
   id: string;
@@ -58,13 +56,6 @@ export const TIPOS_NO: Record<TipoNo, { nome: string; icone: LucideIcon; cor: st
     cor: 'fuchsia',
     ajuda: 'A IA conversa pelo texto-base do nó até entender o que o cliente quer; cada opção é uma saída. Espera a resposta.',
   },
-  lead: { nome: 'Registrar lead', icone: UserPlus, cor: 'teal', ajuda: 'Cadastra pessoa, negócio e atividade com as variáveis coletadas.' },
-  prospeccao: {
-    nome: 'Registrar Prospecção',
-    icone: Target,
-    cor: 'teal',
-    ajuda: 'Abre um negócio no funil e na etapa escolhidos (cadastra a pessoa como lead, se preciso) e a atividade para o vendedor.',
-  },
   tarefa: {
     nome: 'Criar tarefa',
     icone: ClipboardList,
@@ -80,7 +71,7 @@ export const GRUPOS_NO: { titulo: string; tipos: TipoNo[] }[] = [
   { titulo: 'Conversa', tipos: ['mensagem', 'imagem', 'menu', 'pergunta'] },
   { titulo: 'Lógica', tipos: ['condicao', 'case', 'esperar'] },
   { titulo: 'Integrações', tipos: ['api', 'ia', 'iaex'] },
-  { titulo: 'CRM', tipos: ['lead', 'prospeccao', 'tarefa', 'departamento'] },
+  { titulo: 'Equipe', tipos: ['tarefa', 'departamento'] },
   { titulo: 'Encerrar', tipos: ['fim'] },
 ];
 
@@ -169,10 +160,6 @@ export function dadosPadrao(tipo: TipoNo): Record<string, any> {
         opcoes: ['Falar com um atendente', 'Saber mais sobre o sistema', 'Assuntos financeiros', 'Falar com o suporte'].map((rotulo) => ({ id: novoId('o'), rotulo })),
         tentativas: 3,
       };
-    case 'lead':
-      return { nome: '{{nome}}', empresa: '{{empresa}}', email: '{{email}}', interesse: '{{interesse}}' };
-    case 'prospeccao':
-      return { funil_id: null, etapa_id: null, negocio: 'Prospecção', nome: '{{nome}}', empresa: '{{empresa}}', email: '{{email}}', observacao: '' };
     case 'tarefa':
       return { departamento_id: null, assunto: 'Retornar contato: {{nome}} ({{empresa}})', observacao: '{{nome}} da empresa {{empresa}} pediu contato fora do horário de atendimento.' };
     case 'departamento':
@@ -200,9 +187,7 @@ export function resumoNo(no: NoJornada, departamentos: { value: string; label: s
         ? `Horário ${d.das}–${d.ate}`
         : d.tipo === 'cadastrado'
           ? 'Cliente cadastrado?'
-          : d.tipo === 'negocio'
-            ? 'Tem negócio aberto?'
-            : `{{${d.variavel}}} ${OPERADORES.find((o) => o.value === d.operador)?.label ?? ''} ${d.valor}`;
+          : `{{${d.variavel}}} ${OPERADORES.find((o) => o.value === d.operador)?.label ?? ''} ${d.valor}`;
     case 'case':
       return `{{${d.variavel}}}`;
     case 'esperar':
@@ -211,12 +196,8 @@ export function resumoNo(no: NoJornada, departamentos: { value: string; label: s
       return `${d.metodo} ${d.url}`;
     case 'departamento':
       return departamentos.find((x) => Number(x.value) === Number(d.departamento_id))?.label ?? 'Escolha o departamento';
-    case 'lead':
-      return 'Pessoa + negócio + atividade';
     case 'tarefa':
       return d.assunto || '';
-    case 'prospeccao':
-      return d.negocio ? `Negócio: ${d.negocio}` : 'Negócio no funil';
     case 'ia':
       return d.texto || 'Escreva o texto-base';
     case 'iaex':
