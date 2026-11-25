@@ -19,6 +19,15 @@ import { createNotificacoesRouter } from './notificacoes.js';
 import { createOsRouter } from './os.js';
 import { createPainelSuporteRouter } from './painelSuporte.js';
 import { lerPermissoes, mesclarPermissoes, prepararPermissoes } from './permissoes.js';
+import { receberAvisoEvolution, vigiarWhatsApp } from './whatsapp.js';
+import { responderComBot } from './chatbot.js';
+import { tratarRespostaPesquisa } from './pesquisa.js';
+import { verificarInatividade } from './inatividade.js';
+import { rodarBotAtividades } from './atividadeBot.js';
+import { lerRespostasPesquisa } from './pesquisasSatisfacao.js';
+import { retomarJornadas } from './jornada.js';
+import { apagarGravacoesAntigas } from './chamados.js';
+import { waitUntil } from '@vercel/functions';
 import { PERFIS } from './schema.js';
 
 // ==========================================================
@@ -154,7 +163,60 @@ export function createApp() {
   // Suporte pelo site (widget público: o token do chamado dá acesso só a ele)
   app.use(createSuporteRouter());
 
-  // Webhook da Evolution, D4Sign, aceite de proposta e as rotinas do cron ficam só no bm-crm (mesmo banco)
+  // Avisos da Evolution (mensagens recebidas, entrega e leitura) do número do suporte. Público: o token do
+  // endereço identifica a empresa. Processa antes de responder (na Vercel a função congela depois)
+  app.post('/api/webhooks/evolution/:token', async (req: Request, res: Response) => {
+    try {
+      const novas = await receberAvisoEvolution(req.params.token, req.body);
+      // Chatbot em segundo plano (na Vercel, waitUntil mantém a função viva); resposta de pesquisa antes
+      for (const n of novas) {
+        waitUntil(
+          (async () => {
+            if (await tratarRespostaPesquisa(n)) return;
+            await responderComBot(n);
+          })().catch((err) => console.error(`Chatbot: ${err.message}`)),
+        );
+      }
+      res.json({ ok: true });
+    } catch (err: any) {
+      if (!err.status) console.error(`Evolution webhook: ${err.message}`);
+      res.status(err.status || 500).json({ error: err.message });
+    }
+  });
+
+  // Rotinas do suporte chamadas pelo cron da Vercel (vercel.json), que envia "Authorization: Bearer CRON_SECRET".
+  // Fora da Vercel elas rodam pelo setInterval do server.ts. Campanhas, automáticas, contratos e Google Agenda: só no bm-crm
+  const cron = (tarefa: () => Promise<unknown>) => async (req: Request, res: Response) => {
+    const segredo = process.env.CRON_SECRET;
+    const recebido = String(req.header('authorization') || '');
+    const esperado = `Bearer ${segredo}`;
+    if (!segredo || recebido.length !== esperado.length || !crypto.timingSafeEqual(Buffer.from(recebido), Buffer.from(esperado))) {
+      return res.status(401).json({ error: 'Não autorizado.' });
+    }
+    try {
+      res.json({ success: true, resultado: await tarefa() });
+    } catch (err: any) {
+      console.error(`Cron ${req.path}: ${err.message}`);
+      res.status(500).json({ error: err.message });
+    }
+  };
+  app.get(
+    '/api/cron/whatsapp',
+    cron(async () => {
+      // E-mail das pesquisas (IMAP) e vigia da Evolution só a cada 10 minutos: são os mais lentos do ciclo
+      const decimo = new Date().getMinutes() % 10 === 0;
+      const [inatividade, atividadesBot, respostasPesquisa, vigiaWhatsApp, jornadas] = await Promise.all([
+        verificarInatividade(),
+        rodarBotAtividades(45_000),
+        decimo ? lerRespostasPesquisa().catch((e) => `falhou: ${e.message}`) : 'a cada 10 min',
+        decimo ? vigiarWhatsApp().catch((e) => `falhou: ${e.message}`) : 'a cada 10 min',
+        retomarJornadas(20_000),
+      ]);
+      return { inatividade, atividadesBot, respostasPesquisa, vigiaWhatsApp, jornadas };
+    }),
+  );
+  // 2x por dia: as gravações de ligação com mais de 30 dias
+  app.get('/api/cron/gravacoes', cron(async () => ({ gravacoes_apagadas: await apagarGravacoesAntigas() })));
 
   // ==========================================================
   // Daqui para baixo, toda rota /api exige um token válido

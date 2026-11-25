@@ -675,7 +675,7 @@ export async function rotinaContratos(): Promise<{ tarefas: number; renovados: n
   const feito = { tarefas: 0, renovados: 0, encerrados: 0, assinaturas: 0 };
   try {
     // Trava no MySQL: dois servidores no mesmo banco não duplicam tarefas nem renovações
-    const [trava] = await conn.query<any[]>("SELECT GET_LOCK('crmweb_rotina_contratos', 0) AS ok");
+    const [trava] = await conn.query<any[]>("SELECT GET_LOCK('bmsol_rotina_contratos', 0) AS ok");
     if (!trava[0]?.ok) return feito;
     try {
       // 1. Tarefa "Renovar contrato" ao entrar no prazo de aviso (uma por ciclo de vigência)
@@ -721,7 +721,7 @@ export async function rotinaContratos(): Promise<{ tarefas: number; renovados: n
         await recalcularContrato(c.id, conn);
       }
     } finally {
-      await conn.query("SELECT RELEASE_LOCK('crmweb_rotina_contratos')");
+      await conn.query("SELECT RELEASE_LOCK('bmsol_rotina_contratos')");
     }
   } finally {
     conn.release();

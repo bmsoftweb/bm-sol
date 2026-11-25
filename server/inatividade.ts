@@ -46,7 +46,7 @@ export async function verificarInatividade(): Promise<{ aguardando: number }> {
   let aguardando = 0;
   const conn = await pool.getConnection();
   try {
-    const [trava] = await conn.query<any[]>("SELECT GET_LOCK('crmweb_inatividade', 0) AS ok");
+    const [trava] = await conn.query<any[]>("SELECT GET_LOCK('bmsol_inatividade', 0) AS ok");
     if (!trava[0]?.ok) return { aguardando };
     try {
       const [cfgs] = await pool.query<any[]>("SELECT empresa_id, valor FROM config WHERE grupo = 'whatsapp' AND chave = 'chatbot'");
@@ -64,7 +64,7 @@ export async function verificarInatividade(): Promise<{ aguardando: number }> {
         }
       }
     } finally {
-      await conn.query("SELECT RELEASE_LOCK('crmweb_inatividade')");
+      await conn.query("SELECT RELEASE_LOCK('bmsol_inatividade')");
     }
   } finally {
     conn.release();

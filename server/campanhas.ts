@@ -559,7 +559,7 @@ export async function enviarEmailsCampanha(limite = 50, prazoMs = Infinity): Pro
   const conn = await pool.getConnection();
   try {
     // Dois servidores no mesmo banco (Vercel e local) não mandam o mesmo e-mail duas vezes
-    const [trava] = await conn.query<any[]>("SELECT GET_LOCK('crmweb_envio_email_campanha', 0) AS ok");
+    const [trava] = await conn.query<any[]>("SELECT GET_LOCK('bmsol_envio_email_campanha', 0) AS ok");
     if (!trava[0]?.ok) return 0;
     try {
       const [fila] = await conn.query<any[]>(
@@ -593,7 +593,7 @@ export async function enviarEmailsCampanha(limite = 50, prazoMs = Infinity): Pro
       }
       return processados;
     } finally {
-      await conn.query("SELECT RELEASE_LOCK('crmweb_envio_email_campanha')");
+      await conn.query("SELECT RELEASE_LOCK('bmsol_envio_email_campanha')");
     }
   } finally {
     conn.release();
@@ -631,7 +631,7 @@ export async function enviarDisparoAgora(id: string | number, empresaId: string 
     [id, empresaId],
   );
   if (!r[0]) throw Object.assign(new Error('Disparo não encontrado.'), { status: 404 });
-  const trava = r[0].canal === 'email' ? 'crmweb_envio_email_campanha' : 'crmweb_envio_whatsapp';
+  const trava = r[0].canal === 'email' ? 'bmsol_envio_email_campanha' : 'bmsol_envio_whatsapp';
   const conn = await pool.getConnection();
   try {
     const [t] = await conn.query<any[]>('SELECT GET_LOCK(?, 30) AS ok', [trava]);

@@ -23,5 +23,15 @@
     "api/index.ts": {
       "maxDuration": 120
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/whatsapp",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/gravacoes",
+      "schedule": "0 3,15 * * *"
+    }
+  ]
 }

@@ -440,7 +440,7 @@ export async function sincronizarAgendas(tempoMs = 25_000, soEmpresa?: string) {
   const ate = Date.now() + tempoMs;
   const con = await pool.getConnection();
   try {
-    const [[{ ok }]] = await con.query<any[]>("SELECT GET_LOCK('crmweb_agenda_google', 0) AS ok");
+    const [[{ ok }]] = await con.query<any[]>("SELECT GET_LOCK('bmsol_agenda_google', 0) AS ok");
     if (!ok) return 'em andamento';
     const [empresas] = await pool.query<any[]>(
       `SELECT empresa_id FROM config WHERE grupo = ? AND chave = ? AND valor LIKE ?${soEmpresa ? ' AND empresa_id = ?' : ''}`,
@@ -475,7 +475,7 @@ export async function sincronizarAgendas(tempoMs = 25_000, soEmpresa?: string) {
     }
     return total;
   } finally {
-    await con.query("SELECT RELEASE_LOCK('crmweb_agenda_google')").catch(() => {});
+    await con.query("SELECT RELEASE_LOCK('bmsol_agenda_google')").catch(() => {});
     con.release();
   }
 }

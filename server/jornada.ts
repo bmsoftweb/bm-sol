@@ -924,7 +924,7 @@ WhatsApp: ${v.telefone}`.trim(),
 /** Trava por conversa (duas mensagens seguidas, ou cron e mensagem ao mesmo tempo) */
 async function comTrava(empresaId: number, telefone: string, fn: () => Promise<void>) {
   const conn = await pool.getConnection();
-  const nome = `crmweb_jornada:${empresaId}:${telefone}`;
+  const nome = `bmsol_jornada:${empresaId}:${telefone}`;
   try {
     const [t] = await conn.query<any[]>('SELECT GET_LOCK(?, 15) AS ok', [nome]);
     if (!t[0]?.ok) return;

@@ -1109,7 +1109,7 @@ export async function enviarPendentes(limite = 50, prazoMs = Infinity): Promise<
   const conn = await pool.getConnection();
   try {
     // Trava no MySQL: dois servidores no mesmo banco não mandam a mesma mensagem duas vezes
-    const [trava] = await conn.query<any[]>("SELECT GET_LOCK('crmweb_envio_whatsapp', 0) AS ok");
+    const [trava] = await conn.query<any[]>("SELECT GET_LOCK('bmsol_envio_whatsapp', 0) AS ok");
     if (!trava[0]?.ok) return 0;
     try {
       // Disparos das campanhas (server/campanhas.ts): destino e texto já vêm prontos, personalizados ao gerar
@@ -1158,7 +1158,7 @@ export async function enviarPendentes(limite = 50, prazoMs = Infinity): Promise<
       }
       return processados;
     } finally {
-      await conn.query("SELECT RELEASE_LOCK('crmweb_envio_whatsapp')");
+      await conn.query("SELECT RELEASE_LOCK('bmsol_envio_whatsapp')");
     }
   } finally {
     conn.release();
@@ -1194,7 +1194,8 @@ export function iniciarEnvioWhatsApp() {
  */
 export async function vigiarWhatsApp(): Promise<string[]> {
   const [rows] = await pool.query<any[]>(
-    "SELECT empresa_id, chave, valor FROM config WHERE grupo = 'whatsapp' AND chave IN ('provedor', 'campanhas') AND empresa_id IS NOT NULL",
+    // bm-sol: só o número do suporte (o das campanhas é vigiado pelo bm-crm)
+    "SELECT empresa_id, chave, valor FROM config WHERE grupo = 'whatsapp' AND chave = 'provedor' AND empresa_id IS NOT NULL",
   );
   // Expediente (horário do banco = Brasília): seg a sex fora dos feriados nacionais, das 10h às 18h (antes das 10h as 2 h para trás pegam a noite)
   const [[h]] = await pool.query<any[]>(

@@ -312,7 +312,7 @@ export async function enviarAutomaticas(prazoMs = Infinity): Promise<number> {
   const fim = Date.now() + prazoMs;
   const conn = await pool.getConnection();
   try {
-    const [trava] = await conn.query<any[]>("SELECT GET_LOCK('crmweb_whatsapp_automaticas', 0) AS ok, HOUR(NOW()) AS hora");
+    const [trava] = await conn.query<any[]>("SELECT GET_LOCK('bmsol_whatsapp_automaticas', 0) AS ok, HOUR(NOW()) AS hora");
     if (!trava[0]?.ok) return 0;
     try {
       // Só em horário comercial: nada de mensagem de madrugada
@@ -344,7 +344,7 @@ export async function enviarAutomaticas(prazoMs = Infinity): Promise<number> {
       }
       return enviados;
     } finally {
-      await conn.query("SELECT RELEASE_LOCK('crmweb_whatsapp_automaticas')");
+      await conn.query("SELECT RELEASE_LOCK('bmsol_whatsapp_automaticas')");
     }
   } finally {
     conn.release();

@@ -379,7 +379,7 @@ export async function rodarBotAtividades(prazoMs = Infinity): Promise<number> {
   const fim = Date.now() + prazoMs;
   const conn = await pool.getConnection();
   try {
-    const [trava] = await conn.query<any[]>("SELECT GET_LOCK('crmweb_atividade_bot', 0) AS ok, HOUR(NOW()) AS hora");
+    const [trava] = await conn.query<any[]>("SELECT GET_LOCK('bmsol_atividade_bot', 0) AS ok, HOUR(NOW()) AS hora");
     if (!trava[0]?.ok) return 0;
     try {
       const [due] = await pool.query<any[]>(
@@ -398,7 +398,7 @@ export async function rodarBotAtividades(prazoMs = Infinity): Promise<number> {
       if (trava[0].hora >= 8 && trava[0].hora < 20 && Date.now() + 10_000 < fim) await cobrarSemResposta();
       return n;
     } finally {
-      await conn.query("SELECT RELEASE_LOCK('crmweb_atividade_bot')");
+      await conn.query("SELECT RELEASE_LOCK('bmsol_atividade_bot')");
     }
   } finally {
     conn.release();

@@ -2,6 +2,12 @@
 
 Mais recente primeiro. PATCH a cada envio ao GitHub; MAJOR/MINOR só quando pedido.
 
+## 0.0.6 — 2026-11-25
+
+- Banco próprio: o bm-sol passa a usar o banco `bmsol` (cópia do `crmweb`), no `.env`, na Vercel e no padrão do `server/db.ts`. As tabelas de CRM continuam por enquanto e saem depois.
+- Voltam ao bm-sol o webhook da Evolution (número do suporte, sem a parte de campanhas) e as rotinas do suporte: inatividade, Bot das atividades, Automação, respostas da pesquisa por e-mail, vigia do WhatsApp (só o número do suporte) e limpeza das gravações antigas (cron da Vercel e `setInterval` local).
+- Travas do MySQL com nome próprio (`bmsol_`), para não esbarrar nas do bm-crm no mesmo servidor.
+
 ## 0.0.5 — 2026-11-25
 
 - Configurações volta ao menu (Sistema, só administrador) com as abas do suporte: WhatsApp (número do atendimento), Automação (fluxo do atendimento), Chatbot e pesquisa, IA e E-mail do suporte. Mesma tabela `config` do bm-crm: o que muda aqui vale lá. As abas do CRM continuam só no bm-crm.
