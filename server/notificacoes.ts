@@ -28,6 +28,9 @@ export interface Notificacao {
  */
 export const NOTIFICACOES_OPCIONAIS = ['visita_site', 'chamado'];
 
+/** bm-sol não tem Visitas do Site: o aviso de visita (mesma tabela do bm-crm) fica só no CRM */
+const SEM_VISITAS = " AND tipo <> 'visita_site'";
+
 /** Desligadas por usuário, numa linha de config da empresa: { "<id do usuário>": ["visita_site", ...] } */
 const GRUPO = 'notificacoes';
 const CHAVE = 'usuarios';
@@ -93,10 +96,10 @@ export function createNotificacoesRouter(): Router {
       const [itens] = await pool.query<any[]>(
         `SELECT id, tipo, titulo, texto, link, registro_id, DATE_FORMAT(lida_em, '%Y-%m-%d %H:%i:%s') AS lida_em,
                 DATE_FORMAT(criada_em, '%Y-%m-%d %H:%i:%s') AS criada_em
-           FROM notificacoes WHERE empresa_id = ? AND usuario_id = ?${so} ORDER BY id DESC LIMIT 50`,
+           FROM notificacoes WHERE empresa_id = ? AND usuario_id = ?${so}${SEM_VISITAS} ORDER BY id DESC LIMIT 50`,
         [emp, eu],
       );
-      const [[{ n }]] = await pool.query<any>('SELECT COUNT(*) AS n FROM notificacoes WHERE empresa_id = ? AND usuario_id = ? AND lida_em IS NULL', [emp, eu]);
+      const [[{ n }]] = await pool.query<any>(`SELECT COUNT(*) AS n FROM notificacoes WHERE empresa_id = ? AND usuario_id = ? AND lida_em IS NULL${SEM_VISITAS}`, [emp, eu]);
       res.json({ itens, naoLidas: Number(n) });
     } catch (err: any) {
       res.status(400).json({ error: err.message });

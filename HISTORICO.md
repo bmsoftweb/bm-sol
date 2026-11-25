@@ -2,6 +2,10 @@
 
 Mais recente primeiro. PATCH a cada envio ao GitHub; MAJOR/MINOR só quando pedido.
 
+## 0.0.4 — 2026-11-25
+
+- Suporte: sai a tela Visitas do Site (e a rota da última visita). O aviso "entrou no site" não aparece no sino do bm-sol (fica no bm-crm); a gravação pelo widget continua, e a permissão de Visitas do Site no bm-crm é preservada.
+
 ## 0.0.3 — 2026-11-24
 
 - Cadastros: Produtos e Grupos de Produtos saem do menu (fica só Serviços). Os itens da OS continuam aceitando produto, e a permissão de Produtos no bm-crm é preservada ao gravar permissões aqui.

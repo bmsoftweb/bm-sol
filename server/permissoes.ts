@@ -19,6 +19,7 @@ const SO_ADMIN = ['usuarios', 'configuracoes'];
 const OPCOES_SO_CRM = [
   'dashboard', 'kanban', 'prospeccao', 'negocios', 'historico_interacoes', 'propostas', 'pedidos', 'contratos',
   'leads', 'segmentos', 'condicoes_pagamento', 'funis', 'campanhas', 'vendas_produtos', 'produtos', 'produtos_grupos',
+  'site_visitas',
 ];
 
 /** Ids que podem ser gravados: as telas e os cadastros do menu (menos os só de administrador) */
