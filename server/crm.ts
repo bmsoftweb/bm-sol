@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { pool } from './db.js';
 import { friendlyDbError } from './crud.js';
 
-/** Rotas que sobraram do CRM no bm-sol: só o aviso das atividades novas */
+/** Rotas que sobraram do CRM no bm-sol: o aviso das atividades novas e os funis do nó Registrar Prospecção da Automação */
 export function createCrmRouter() {
   const router = Router();
 
@@ -20,6 +20,21 @@ export function createCrmRouter() {
         [String(res.locals.empresaId), res.locals.usuarioId, res.locals.usuarioId],
       );
       res.json(r);
+    } catch (err: any) {
+      res.status(err.status || 400).json({ error: friendlyDbError(err) });
+    }
+  });
+
+  // Funis e etapas (só leitura): o nó "Registrar Prospecção" da Automação do WhatsApp escolhe onde o negócio entra
+  router.get('/crm/funis', async (_req: Request, res: Response) => {
+    try {
+      const emp = String(res.locals.empresaId);
+      const [funis] = await pool.query<any[]>('SELECT id, nome FROM funis WHERE ativo = 1 AND empresa_id = ? ORDER BY ordem, nome', [emp]);
+      const [etapas] = await pool.query<any[]>(
+        'SELECT id, funil_id, nome, ordem, probabilidade, cor FROM etapas WHERE funil_id IN (SELECT id FROM funis WHERE empresa_id = ?) ORDER BY ordem, nome',
+        [emp],
+      );
+      res.json(funis.map((f) => ({ ...f, etapas: etapas.filter((e) => e.funil_id === f.id) })));
     } catch (err: any) {
       res.status(err.status || 400).json({ error: friendlyDbError(err) });
     }

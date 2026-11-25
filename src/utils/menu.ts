@@ -31,6 +31,7 @@ import {
   Wrench,
   Hammer,
   Receipt,
+  Settings,
   type LucideIcon,
 } from 'lucide-react';
 import { ResourceDef, ResourceGroup, Usuario } from '../types';
@@ -82,7 +83,7 @@ export interface ItemMenu {
 }
 
 /** Opções só de administrador (mesma lista de SO_ADMIN em server/permissoes.ts) */
-const SO_ADMIN = ['usuarios'];
+const SO_ADMIN = ['usuarios', 'configuracoes'];
 
 /**
  * Opções do menu, agrupadas como na barra lateral. É a mesma lista das permissões do usuário
@@ -121,6 +122,8 @@ export function gruposDoMenu(resources: ResourceDef[]): { titulo: string; itens:
           .map((r) => ({ id: r.name, label: r.label, descricao: r.description, icone: ICONS[r.icon] || Database })),
       ],
     })),
+    // Só as abas do suporte (src/components/ConfiguracoesView.tsx)
+    { titulo: 'Sistema', itens: [{ id: 'configuracoes', label: 'Configurações', descricao: 'Preferências do suporte', icone: Settings, somenteAdmin: true }] },
   ];
   return grupos.filter((g) => g.itens.length);
 }

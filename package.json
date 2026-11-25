@@ -1,7 +1,7 @@
 {
   "name": "bm-sol",
   "private": true,
-  "version": "0.0.4",
+  "version": "0.0.5",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
@@ -19,6 +19,7 @@
     "@vercel/blob": "^2.8.0",
     "@vercel/functions": "^3.9.9",
     "@vitejs/plugin-react": "^5.0.4",
+    "@xyflow/react": "^12.12.1",
     "bcryptjs": "^3.0.3",
     "dexie": "^4.4.6",
     "dotenv": "^17.2.3",

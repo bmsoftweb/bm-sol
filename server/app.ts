@@ -11,6 +11,7 @@ import { createParticipantesRouter } from './participantes.js';
 import { createAtividadeBotRouter } from './atividadeBot.js';
 import { createPesquisasSatisfacaoRouter } from './pesquisasSatisfacao.js';
 import { createConversasRouter } from './conversas.js';
+import { createJornadaRouter } from './jornada.js';
 import { createSuporteRouter } from './suporte.js';
 import { createFotosRouter } from './fotos.js';
 import { createChamadosRouter } from './chamados.js';
@@ -89,7 +90,7 @@ export function createApp() {
   // Documentos de contrato, arquivos das conversas e imagens do chat do suporte (base64) passam do limite normal de 2 MB
   const jsonNormal = express.json({ limit: '2mb' });
   const jsonDocumentos = express.json({ limit: '25mb' });
-  const comArquivo = /^\/api\/(whatsapp\/conversas\/\d+|chamados\/\d+\/mensagens|publico\/suporte\/chamado\/[^/]+\/mensagens)$/;
+  const comArquivo = /^\/api\/(whatsapp\/conversas\/\d+|jornada\/arquivos|chamados\/\d+\/mensagens|publico\/suporte\/chamado\/[^/]+\/mensagens)$/;
   app.use((req, res, next) => (comArquivo.test(req.path) ? jsonDocumentos : jsonNormal)(req, res, next));
 
   // ==========================================================
@@ -269,6 +270,8 @@ export function createApp() {
   app.use('/api', createAtividadeBotRouter());
   app.use('/api', createPesquisasSatisfacaoRouter());
   app.use('/api', createConversasRouter());
+  // Arquivos da Automação do WhatsApp (Configurações › Automação)
+  app.use('/api', createJornadaRouter());
   app.use('/api', createCrmRouter());
   app.use('/api', createCrudRouter());
 

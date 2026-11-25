@@ -2,6 +2,11 @@
 
 Mais recente primeiro. PATCH a cada envio ao GitHub; MAJOR/MINOR só quando pedido.
 
+## 0.0.5 — 2026-11-25
+
+- Configurações volta ao menu (Sistema, só administrador) com as abas do suporte: WhatsApp (número do atendimento), Automação (fluxo do atendimento), Chatbot e pesquisa, IA e E-mail do suporte. Mesma tabela `config` do bm-crm: o que muda aqui vale lá. As abas do CRM continuam só no bm-crm.
+- Servidor: voltam a rota dos arquivos da Automação e a lista de funis (só leitura) para o nó Registrar Prospecção.
+
 ## 0.0.4 — 2026-11-25
 
 - Suporte: sai a tela Visitas do Site (e a rota da última visita). O aviso "entrou no site" não aparece no sino do bm-sol (fica no bm-crm); a gravação pelo widget continua, e a permissão de Visitas do Site no bm-crm é preservada.

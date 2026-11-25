@@ -927,3 +927,56 @@ export const fetchItemDaAtividade = (
 ): Promise<{ id: number; pessoa_nome: string | null; pessoa_telefone: string | null; assunto: string | null; data_br: string | null; atendente_nome: string | null; objetivo: string | null; situacao: string; pesquisa_descricao: string }> =>
   get(`/api/pesquisas-satisfacao/da-atividade/${encodeURIComponent(String(atividadeId))}`);
 export const buscarPessoasPesquisa = (q: string): Promise<{ id: number; nome: string }[]> => get(`/api/pesquisas-satisfacao-pessoas?q=${encodeURIComponent(q)}`);
+
+
+// ------------------------------------------------------------
+// CRM: Kanban, ficha do negócio, propostas e pedidos
+// ------------------------------------------------------------
+export const fetchFunis = (): Promise<Funil[]> => get('/api/crm/funis');
+
+
+export const salvarConfig = (grupo: string, chave: string, valor: unknown): Promise<{ success: boolean }> =>
+  enviar('PUT', `/api/config/${grupo}/${chave}`, { valor });
+
+
+/** Imagem do nó "Enviar imagem" da jornada (base64 sem o prefixo data:) */
+export const enviarArquivoJornada = (nome: string, mimetype: string, base64: string): Promise<{ id: number; nome: string }> =>
+  enviar('POST', '/api/jornada/arquivos', { nome, mimetype, base64 });
+
+/** Imagem da jornada como endereço local (blob:) para mostrar no editor */
+export async function fetchArquivoJornada(id: number): Promise<string> {
+  const res = await fetch(`/api/jornada/arquivos/${id}`, { headers: headers() });
+  if (!res.ok) await parseOrThrow(res);
+  return URL.createObjectURL(await res.blob());
+}
+
+
+/** Conecta e autentica no SMTP gravado em Configurações › E-mail, sem enviar nada */
+/** Testa a conta de e-mail gravada: smtp = comercial, smtp_suporte = suporte */
+export const testarSmtp = (chave: 'smtp' | 'smtp_suporte' = 'smtp'): Promise<{ success: boolean }> => enviar('POST', `/api/config/email/${chave}/testar`);
+
+
+/** Consulta no provedor se o número do WhatsApp gravado em Configurações está conectado */
+/** Conta do WhatsApp: a padrão ou a das campanhas (Configurações › WhatsApp) */
+export type ContaWhats = 'provedor' | 'campanhas';
+
+export const testarWhatsApp = (conta: ContaWhats = 'provedor'): Promise<{ conectado: boolean; numero?: string; mensagem: string }> =>
+  enviar('POST', `/api/config/whatsapp/${conta}/testar`);
+
+
+/** QR Code para conectar o número do WhatsApp gravado; conectado: true se já estiver */
+export const conectarWhatsApp = (conta: ContaWhats = 'provedor'): Promise<{ conectado: boolean; qrcode?: string }> =>
+  enviar('POST', `/api/config/whatsapp/${conta}/conectar`);
+
+
+/** Liga o recebimento de mensagens: a Evolution passa a avisar o CRM neste endereço (origem) */
+export const ativarRecebimentoWhatsApp = (origem: string, conta: ContaWhats = 'provedor'): Promise<{ origem: string; em: string }> =>
+  enviar('POST', `/api/config/whatsapp/${conta}/receber`, { origem });
+
+
+/** Desconecta o número do WhatsApp gravado (depois é preciso ler outro QR Code) */
+export const desconectarWhatsApp = (conta: ContaWhats = 'provedor'): Promise<{ success: boolean }> =>
+  enviar('POST', `/api/config/whatsapp/${conta}/desconectar`);
+
+/** Pergunta curta à IA (Gemini, Claude ou DeepSeek) com a chave e o modelo gravados em Configurações › IA */
+export const testarChatbot = (): Promise<{ mensagem: string }> => enviar('POST', '/api/config/whatsapp/chatbot/testar');

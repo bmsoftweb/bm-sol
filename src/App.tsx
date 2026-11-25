@@ -27,6 +27,7 @@ import { AcaoEncerrarOS } from './components/EncerrarOS';
 import { AcaoGerarOS, ConfirmarGerarOS } from './components/GerarOS';
 import { AcaoRetornoLigacao, BotaoConcluirPesquisa, PesquisaEditor } from './components/PesquisasSatisfacao';
 import { PainelSuporte } from './components/PainelSuporte';
+import { ConfiguracoesView } from './components/ConfiguracoesView';
 import { ConversasView, PedidoConversa } from './components/ConversasView';
 import { ChamadosAtivos, ChamadosFila, tempoEspera } from './components/Chamados';
 import { BotaoWhatsApp } from './components/BotaoWhatsApp';
@@ -450,6 +451,7 @@ export default function App() {
   // ----------------------------------------------------------
   const TITULOS: Record<string, [string, string]> = {
     conversas: ['Whatsapp', 'Mensagens do WhatsApp da empresa'],
+    configuracoes: ['Configurações', 'Preferências do suporte: WhatsApp, Automação, Chatbot, IA e e-mail'],
     painel_suporte: ['Painel de Suporte', 'Chamados, WhatsApp e satisfação no período, comparados com o período anterior'],
     chamados_fila: ['Fila de Chamados', 'Chamados aguardando atendimento, em ordem de chegada'],
     chamados_ativos: ['Chamados Ativos', 'Atendimento dos chamados de suporte'],
@@ -502,6 +504,10 @@ export default function App() {
           <div className="px-4 sm:px-6 lg:px-8 py-6">
             <PainelSuporte refreshToken={refreshToken + (voltas[tela] ?? 0)} onNavigate={navegar} onNavigateFiltrado={navegarFiltrado} />
           </div>
+        </main>
+      ) : activeTab === 'configuracoes' ? (
+        <main className="flex-1 flex flex-col min-h-0 w-full">
+          <ConfiguracoesView usuario={usuario} onToast={showToast} />
         </main>
       ) : activeResource ? (
         <main className="flex-1 flex flex-col min-h-0 w-full">
