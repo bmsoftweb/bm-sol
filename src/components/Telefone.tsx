@@ -165,11 +165,12 @@ export const Telefone: React.FC<{
     else if (!chegando && s?.fase === 'tocando' && !atendendo) setEstado(null);
   }, [chegando?.id]);
 
-  // Trinado enquanto toca
+  // Enquanto toca: trinado para quem é chamado; "tuuu" de linha chamando para quem liga
   useEffect(() => {
-    if (estado?.fase !== 'tocando') return;
-    tocarAviso('telefone');
-    const i = setInterval(() => tocarAviso('telefone'), 3000);
+    if (estado?.fase !== 'tocando' && estado?.fase !== 'chamando') return;
+    const som = estado.fase === 'tocando' ? 'telefone' : 'linha';
+    tocarAviso(som);
+    const i = setInterval(() => tocarAviso(som), som === 'linha' ? 5000 : 3000);
     return () => clearInterval(i);
   }, [estado?.fase]);
 

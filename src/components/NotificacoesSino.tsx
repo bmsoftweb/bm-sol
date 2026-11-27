@@ -1,11 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Bell, CheckCheck, Circle, Globe, Headset, ArrowRightLeft, ClipboardList, Star, MessageCircleWarning } from 'lucide-react';
+import { Bell, CheckCheck, Circle, Headset, ArrowRightLeft, ClipboardList, Star, MessageCircleWarning } from 'lucide-react';
 import { fetchNotificacoes, marcarNotificacaoLida, marcarTodasLidas, Notificacao } from '../services/api';
 import { formatDateTimeBR } from '../utils/formatters';
 import { repetirConsulta } from '../utils/intervalo';
 
 const ICONES: Record<string, React.ElementType> = {
-  visita_site: Globe,
   chamado: Headset,
   transferencia: ArrowRightLeft,
   tarefa: ClipboardList,

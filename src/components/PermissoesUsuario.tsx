@@ -17,7 +17,6 @@ interface Props {
 
 /** Notificações da campainha que o usuário pode desligar (server/notificacoes.ts › NOTIFICACOES_OPCIONAIS) */
 const NOTIFICACOES = [
-  { tipo: 'visita_site', label: 'Alguém entrou no site', hint: 'Só para quem acessa Visitas do Site' },
   { tipo: 'chamado', label: 'Chamado novo na fila', hint: 'Só para quem acessa a Fila de Chamados' },
 ];
 

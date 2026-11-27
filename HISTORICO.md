@@ -2,6 +2,11 @@
 
 Mais recente primeiro. PATCH a cada envio ao GitHub; MAJOR/MINOR só quando pedido.
 
+## 0.0.8 — 2026-11-27
+
+- Ligação entre usuários: quem liga ouve o som de linha chamando ("tuuu" de 425 Hz por 1 s, a cada 5 s) até atenderem; quem recebe continua com o trinado de telefone.
+- Sobras das Visitas do Site saem do código: registro de visitas no `widget.js` e no servidor (`/api/publico/suporte/:empresa/visitas`), o aviso "Alguém entrou no site" da campainha e das permissões, e o selo "Visitando...".
+
 ## 0.0.7 — 2026-11-25
 
 - CRM fora do código: leads, negócios, funis e etapas, propostas, pedidos e contratos, campanhas (e o número das campanhas, "SAIR"), prospecção, segmentos, mensagens automáticas, Google Agenda, D4Sign e revezamento de vendedores, no servidor e nas telas.

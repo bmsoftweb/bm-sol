@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import express, { Router, Request, Response } from 'express';
+import { Router, Request, Response } from 'express';
 import { pool } from './db.js';
 import { chamarBmdesk } from './bmdesk.js';
 import { fecharSecao, gravarMensagem, ImagemMensagem, lerImagem, NR_FILA, TOQUE_SEG } from './chamados.js';
@@ -131,95 +131,6 @@ export function createSuporteRouter(): Router {
     if (!e[0]) throw erro(404, 'Suporte não encontrado.');
     const [cats] = await pool.query<any[]>('SELECT id, nome FROM chamado_categorias WHERE empresa_id = ? AND ativo = 1 ORDER BY nome', [e[0].id]);
     res.json({ empresa: { nome: e[0].nome, logo: e[0].logo }, categorias: cats });
-  }));
-
-  /**
-   * Visita ao site com o widget (uma por aba do navegador; o widget.js controla). Vem como text/plain
-   * para o navegador não fazer a consulta prévia de CORS (o site é de outro endereço)
-   */
-  const corpoTexto = express.text({ type: 'text/plain', limit: '8kb' });
-  const jsonDoTexto = (corpo: unknown): any => {
-    if (typeof corpo !== 'string') return corpo || {};
-    try {
-      return JSON.parse(corpo);
-    } catch {
-      return {};
-    }
-  };
-  /** Chave da visita gerada pelo widget (UUID ou equivalente) */
-  const chaveVisita = (v: unknown) => {
-    const s = String(v ?? '');
-    return /^[\w-]{8,36}$/.test(s) ? s : null;
-  };
-
-  /** Pessoa do CRM com esse CNPJ/CPF (ou null) */
-  const pessoaDoDocumento = async (empresaId: number, documento: string): Promise<number | null> => {
-    if (!documento) return null;
-    const [p] = await pool.query<any[]>('SELECT id FROM pessoas WHERE empresa_id = ? AND cpf = ? ORDER BY id LIMIT 1', [empresaId, documento]);
-    return p[0]?.id ?? null;
-  };
-
-  router.post('/api/publico/suporte/:empresa/visitas', corpoTexto, rota(async (req, res) => {
-    const empresaId = Number(req.params.empresa) || 0;
-    const b = jsonDoTexto(req.body);
-    const documento = digitos(b.cnpj, 14);
-    const ip = String(req.get('x-forwarded-for')?.split(',')[0] || req.socket.remoteAddress || '').trim().slice(0, 45);
-    // Empresa inexistente não grava (o SELECT não devolve linha)
-    const [visita] = await pool.query<any>(
-      `INSERT INTO site_visitas (empresa_id, chave, pagina, titulo, origem, documento, pessoa_id, cliente_nome, navegador, ip)
-       SELECT id, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM empresas WHERE id = ?`,
-      [chaveVisita(b.chave), texto(b.pagina, 500), texto(b.titulo, 200), texto(b.origem, 500) || null, documento || null,
-        await pessoaDoDocumento(empresaId, documento), texto(b.nome, 120) || null, texto(req.get('user-agent'), 300) || null, ip || null, empresaId],
-    );
-    // Quem acessa Visitas do Site fica sabendo (a campainha do cabeçalho)
-    if (visita.insertId) {
-      await notificar(empresaId, { tela: 'site_visitas' }, {
-        tipo: 'visita_site',
-        titulo: texto(b.nome, 120) ? `${texto(b.nome, 120)} entrou no site` : 'Alguém entrou no site',
-        texto: texto(b.titulo, 200) || texto(b.pagina, 500),
-        link: 'site_visitas',
-        registroId: Number(visita.insertId),
-      });
-    }
-    res.status(204).end();
-  }));
-
-  /** O cliente se identificou no chat (dados salvos ou chamado aberto): nome e CNPJ/CPF na visita */
-  router.post('/api/publico/suporte/:empresa/visitas/cliente', corpoTexto, rota(async (req, res) => {
-    const empresaId = Number(req.params.empresa) || 0;
-    const b = jsonDoTexto(req.body);
-    const chave = chaveVisita(b.chave);
-    const documento = digitos(b.cnpj, 14);
-    const nome = texto(b.nome, 120);
-    if (chave && (nome || documento)) {
-      await pool.query(
-        `UPDATE site_visitas SET cliente_nome = COALESCE(?, cliente_nome), documento = COALESCE(?, documento), pessoa_id = COALESCE(?, pessoa_id)
-          WHERE empresa_id = ? AND chave = ?`,
-        [nome || null, documento || null, await pessoaDoDocumento(empresaId, documento), empresaId, chave],
-      );
-    }
-    res.status(204).end();
-  }));
-
-  /** Saída do site (sendBeacon do widget ao esconder/fechar a página): a última hora fica valendo */
-  router.post('/api/publico/suporte/:empresa/visitas/saida', corpoTexto, rota(async (req, res) => {
-    const chave = chaveVisita(jsonDoTexto(req.body).chave);
-    if (chave) {
-      await pool.query('UPDATE site_visitas SET saida_em = NOW() WHERE empresa_id = ? AND chave = ?', [Number(req.params.empresa) || 0, chave]);
-    }
-    res.status(204).end();
-  }));
-
-  /**
-   * Ainda no site (widget, a cada minuto com a página à vista): a saída fica 90 s à frente. Enquanto chegar,
-   * a visita aparece como "Visitando..."; se parar (navegador fechado sem aviso), a saída fica perto da última vez
-   */
-  router.post('/api/publico/suporte/:empresa/visitas/presente', corpoTexto, rota(async (req, res) => {
-    const chave = chaveVisita(jsonDoTexto(req.body).chave);
-    if (chave) {
-      await pool.query('UPDATE site_visitas SET saida_em = NOW() + INTERVAL 90 SECOND WHERE empresa_id = ? AND chave = ?', [Number(req.params.empresa) || 0, chave]);
-    }
-    res.status(204).end();
   }));
 
   /** Abre o chamado; devolve o token que dá acesso a ele */

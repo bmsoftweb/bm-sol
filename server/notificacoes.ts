@@ -5,7 +5,7 @@ import { lerConfig } from './config.js';
 
 /**
  * Notificações dos usuários (tabela notificacoes): a campainha do cabeçalho mostra as do usuário logado, com lida/não
- * lida. Quem gera: visita no site (server/suporte.ts), chamado novo na fila (suporte.ts e chamados.ts), chamado ou
+ * lida. Quem gera: chamado novo na fila (suporte.ts e chamados.ts), chamado ou
  * conversa do WhatsApp transferido para o usuário (chamados.ts e conversas.ts), tarefa criada pelas automações para ele
  * (pendencias.ts, jornada.ts, chatbot.ts, crud.ts/os.ts), avaliação com nota baixa (pesquisa.ts) e problema no número
  * do WhatsApp (vigia da Evolution, whatsapp.ts).
@@ -15,7 +15,7 @@ import { lerConfig } from './config.js';
  */
 
 export interface Notificacao {
-  tipo: 'visita_site' | 'chamado' | 'transferencia' | 'tarefa' | 'avaliacao' | 'whatsapp';
+  tipo: 'chamado' | 'transferencia' | 'tarefa' | 'avaliacao' | 'whatsapp';
   titulo: string;
   texto?: string | null;
   link?: string | null;
@@ -26,12 +26,9 @@ export interface Notificacao {
  * Tipos que o usuário pode desligar (Usuários › Permissões › Notificações). Os outros são obrigatórios: transferência
  * para ele, tarefa para ele e avaliação com nota baixa
  */
-export const NOTIFICACOES_OPCIONAIS = ['visita_site', 'chamado'];
+export const NOTIFICACOES_OPCIONAIS = ['chamado'];
 
-/** bm-sol não tem Visitas do Site: o aviso de visita (mesma tabela do bm-crm) fica só no CRM */
-const SEM_VISITAS = " AND tipo <> 'visita_site'";
-
-/** Desligadas por usuário, numa linha de config da empresa: { "<id do usuário>": ["visita_site", ...] } */
+/** Desligadas por usuário, numa linha de config da empresa: { "<id do usuário>": ["chamado", ...] } */
 const GRUPO = 'notificacoes';
 const CHAVE = 'usuarios';
 const desligadasDaEmpresa = async (empresaId: string | number): Promise<Record<string, string[]>> =>
@@ -96,10 +93,10 @@ export function createNotificacoesRouter(): Router {
       const [itens] = await pool.query<any[]>(
         `SELECT id, tipo, titulo, texto, link, registro_id, DATE_FORMAT(lida_em, '%Y-%m-%d %H:%i:%s') AS lida_em,
                 DATE_FORMAT(criada_em, '%Y-%m-%d %H:%i:%s') AS criada_em
-           FROM notificacoes WHERE empresa_id = ? AND usuario_id = ?${so}${SEM_VISITAS} ORDER BY id DESC LIMIT 50`,
+           FROM notificacoes WHERE empresa_id = ? AND usuario_id = ?${so} ORDER BY id DESC LIMIT 50`,
         [emp, eu],
       );
-      const [[{ n }]] = await pool.query<any>(`SELECT COUNT(*) AS n FROM notificacoes WHERE empresa_id = ? AND usuario_id = ? AND lida_em IS NULL${SEM_VISITAS}`, [emp, eu]);
+      const [[{ n }]] = await pool.query<any>(`SELECT COUNT(*) AS n FROM notificacoes WHERE empresa_id = ? AND usuario_id = ? AND lida_em IS NULL`, [emp, eu]);
       res.json({ itens, naoLidas: Number(n) });
     } catch (err: any) {
       res.status(400).json({ error: err.message });

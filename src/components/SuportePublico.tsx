@@ -71,13 +71,6 @@ const avisarApp = (msg: Record<string, string>) => {
   }
 };
 
-/** Avisa o widget (site em volta) quem é o cliente, para dar nome à visita (Suporte › Visitas do Site) */
-const avisarCliente = (dados: { nome?: string; documento?: string }) => {
-  if (window.parent !== window && (dados.nome || dados.documento)) {
-    window.parent.postMessage({ crmweb: 'cliente', nome: dados.nome || '', documento: dados.documento || '' }, '*');
-  }
-};
-
 /** Pedido de tela remota do técnico (server/chamados.ts): vira o cartão para baixar o BMSoft Suporte */
 const TELA_REMOTA = '[[anydesk]]';
 /** Cutucão do técnico (server/chamados.ts): campainha, tremida e aviso ao site (widget.js) */
@@ -186,15 +179,6 @@ export const SuportePublico: React.FC<{ empresa: string; cnpj: string }> = ({ em
       .then(setInfo)
       .catch((e) => setErro(e.message));
   }, [empresa]);
-
-  // Cliente que já se identificou antes neste navegador: a visita ganha o nome dele
-  useEffect(() => {
-    try {
-      avisarCliente(JSON.parse(ler(chaveDados) || '{}') || {});
-    } catch {
-      // dados salvos inválidos
-    }
-  }, [chaveDados]);
 
   /** Aviso no topo do formulário (atendimento anterior que acabou de terminar) */
   const [aviso, setAviso] = useState<string | null>(null);
@@ -307,7 +291,6 @@ const Abrir: React.FC<{
     try {
       const r = await api(`/api/publico/suporte/${encodeURIComponent(empresa)}/chamados`, { ...v, categoria_id: Number(v.categoria_id) || null, pc: PC_APP || undefined });
       gravar(chaveDados, JSON.stringify({ documento: v.documento, nome: v.nome, telefone: v.telefone, fixo: v.fixo }));
-      avisarCliente(v);
       onAberto(r.token);
     } catch (err: any) {
       setErro(err.message);

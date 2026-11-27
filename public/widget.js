@@ -17,65 +17,6 @@
   var cor = script.getAttribute('data-cor') || '#2563eb';
   var url = origem + '/suporte?e=' + encodeURIComponent(empresa) + (cnpj ? '&cnpj=' + encodeURIComponent(cnpj) : '');
 
-  // Registra a visita no CRM (Suporte › Visitas do Site), uma vez por aba: navegar pelo site não repete.
-  // A chave da aba liga a entrada às saídas. text/plain + no-cors: sem consulta prévia de CORS; a resposta não interessa
-  var urlVisitas = origem + '/api/publico/suporte/' + encodeURIComponent(empresa) + '/visitas';
-  function enviarVisita(caminho, dados) {
-    if (!window.fetch) return;
-    fetch(urlVisitas + caminho, {
-      method: 'POST',
-      mode: 'no-cors',
-      keepalive: true,
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify(dados),
-    }).catch(function () {});
-  }
-  // Nome e CNPJ que o cliente já informou no chat (o chat avisa o widget; fica guardado neste site)
-  var cliente = {};
-  try {
-    cliente = JSON.parse(localStorage.getItem('crmwebCliente:' + empresa) || '{}') || {};
-  } catch (e) {
-    // sem localStorage: visita sem nome
-  }
-  var chaveVisita = null;
-  try {
-    chaveVisita = sessionStorage.getItem('crmwebVisita:' + empresa);
-  } catch (e) {
-    // sem sessionStorage (navegação privada bloqueada): cada página vira uma visita
-  }
-  if (!chaveVisita) {
-    chaveVisita = window.crypto && crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
-    try {
-      sessionStorage.setItem('crmwebVisita:' + empresa, chaveVisita);
-    } catch (e) {
-      // idem
-    }
-    enviarVisita('', {
-      chave: chaveVisita,
-      pagina: location.href,
-      titulo: document.title,
-      origem: document.referrer,
-      cnpj: cnpj || cliente.documento || '',
-      nome: cliente.nome || '',
-    });
-  }
-  // Saída: página fora de vista (fechou a aba, foi para outro site, trocou de aba ou de página do site). A última vale
-  function registrarSaida() {
-    if (navigator.sendBeacon) navigator.sendBeacon(urlVisitas + '/saida', new Blob([JSON.stringify({ chave: chaveVisita })], { type: 'text/plain' }));
-    else enviarVisita('/saida', { chave: chaveVisita });
-  }
-  // Ainda no site: a cada minuto com a página à vista (e ao voltar para ela), para o CRM mostrar "Visitando..."
-  function registrarPresenca() {
-    if (document.visibilityState === 'visible') enviarVisita('/presente', { chave: chaveVisita });
-  }
-  document.addEventListener('visibilitychange', function () {
-    if (document.visibilityState === 'hidden') registrarSaida();
-    else registrarPresenca();
-  });
-  window.addEventListener('pagehide', registrarSaida);
-  setInterval(registrarPresenca, 60000);
-  setTimeout(registrarPresenca, 3000);
-
   var caixa = document.createElement('div');
   caixa.style.cssText = 'position:fixed;right:20px;bottom:20px;z-index:2147483000;font-family:system-ui,sans-serif;';
 
@@ -208,17 +149,6 @@
   // vista (outra aba, janela minimizada ou atrás de outro programa), o título pisca e sai a notificação
   window.addEventListener('message', function (e) {
     if (e.origin !== origem || !e.data || !e.data.crmweb) return;
-    // O chat sabe quem é o cliente (dados salvos ou chamado aberto): dá nome a esta visita e às próximas
-    if (e.data.crmweb === 'cliente') {
-      cliente = { nome: String(e.data.nome || '').slice(0, 120), documento: String(e.data.documento || '').slice(0, 14) };
-      try {
-        localStorage.setItem('crmwebCliente:' + empresa, JSON.stringify(cliente));
-      } catch (err) {
-        // sem localStorage: vale só para esta visita
-      }
-      enviarVisita('/cliente', { chave: chaveVisita, nome: cliente.nome, cnpj: cnpj || cliente.documento });
-      return;
-    }
     var cutucou = e.data.crmweb === 'cutucar';
     var ligacao = e.data.crmweb === 'ligacao';
     abrirPainel();

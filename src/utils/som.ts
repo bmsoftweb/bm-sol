@@ -33,6 +33,8 @@ const SONS: Record<string, { notas: number[]; intervalo: number; duracao: number
   cutucar: { notas: [1319, 988, 1319, 988, 1319, 988], intervalo: 0.12, duracao: 0.1, onda: 'square', volume: 0.12 },
   // Ligação de outro técnico: o trinado do telefone (repete enquanto toca, src/components/Telefone.tsx)
   telefone: { notas: Array.from({ length: 20 }, (_, i) => (i % 2 ? 800 : 1000)), intervalo: 0.05, duracao: 0.05, onda: 'sine', volume: 0.25 },
+  // Linha chamando, para quem liga: o "tuuu" de 425 Hz por 1 s (repete a cada 5 s, src/components/Telefone.tsx)
+  linha: { notas: [425], intervalo: 0, duracao: 1, onda: 'sine', volume: 0.15 },
 };
 
 /** Buzina de caminhão: três toques de um acorde grave em onda dente de serra, no volume máximo */
@@ -55,7 +57,7 @@ function tocarBuzina(c: AudioContext) {
   });
 }
 
-export function tocarAviso(tipo: 'whatsapp' | 'suporte' | 'chamado' | 'campainha' | 'cutucar' | 'buzina' | 'telefone' = 'whatsapp') {
+export function tocarAviso(tipo: 'whatsapp' | 'suporte' | 'chamado' | 'campainha' | 'cutucar' | 'buzina' | 'telefone' | 'linha' = 'whatsapp') {
   try {
     ctx ??= new AudioContext();
     if (tipo === 'buzina') return tocarBuzina(ctx);
